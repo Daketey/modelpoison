@@ -1,228 +1,197 @@
 """
 SafeTensors Attack Vector Generator
 
-Generates attack vectors for SafeTensors format (.safetensors)
+Generates real SafeTensors files and crafted binary variants for security testing.
+All methods produce genuine binary files — no JSON stubs.
+
+SafeTensors layout:
+    [uint64 LE header_size][header_size bytes of UTF-8 JSON][tensor data ...]
+
+Requires: safetensors, numpy, torch (pip install safetensors numpy torch)
 """
 
-import json
+import json as _json
+import os
+import struct
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
+
+import numpy as np
+
+
+def _pack_safetensors(header: dict, tensor_data: bytes = b"") -> bytes:
+    """Serialise a safetensors payload from a header dict and raw tensor data."""
+    header_bytes = _json.dumps(header, separators=(",", ":")).encode("utf-8")
+    return struct.pack("<Q", len(header_bytes)) + header_bytes + tensor_data
 
 
 class SafeTensorsAttackGenerator:
     """Generate SafeTensors-specific attack vectors."""
-    
+
     def __init__(self, output_dir: str = "./output"):
-        """Initialize the SafeTensors attack generator."""
         self.output_dir = Path(output_dir) / "safetensors_vectors"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.generated_files = []
-    
+
     def generate_header_corruption(self) -> Tuple[str, int]:
-        """Generate SafeTensors with corrupted header.
-        
+        """Craft a SafeTensors file with a header_size that far exceeds the file.
+
         Attack Vector:
-            Malformed SafeTensors header with:
-            1. Invalid JSON header
-            2. Oversized header length field
-            3. Corrupted dtype specifications
-            4. Integer overflow in size calculation
-        
-        Impact: Buffer overflow, parsing error
+            header_size field claims 2^62 bytes, but file body is only a few bytes.
+            Parsers that pre-allocate or seek by header_size can OOM or panic.
+
         Severity: HIGH
-        Detection: Header validation
-        
-        Returns:
-            Tuple of (filepath, num_corruption_points)
+        Detection: Header size bounds validation
         """
-        filepath = self.output_dir / "01_header_corruption.json"
-        
-        corrupt_header = {
-            "safetensors": {
-                "header_length": 2**32,  # Oversized
-                "header_json": "INVALID JSON {{{",
-                "metadata": {
-                    "format": "corrupted",
-                    "version": 999
-                }
-            }
-        }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(corrupt_header, f, indent=2)
-        
+        filepath = self.output_dir / "01_header_corruption.safetensors"
+
+        # Claim a gigantic header, write almost nothing
+        header_size = 0x3FFF_FFFF_FFFF_FFFF  # ~4.6 EiB
+        body = b'{"corrupted":"true"}' + b"\x00" * 16
+        data = struct.pack("<Q", header_size) + body
+        with open(filepath, "wb") as f:
+            f.write(data)
+
         self.generated_files.append(str(filepath))
-        return str(filepath), 3
-    
+        return str(filepath), 1
+
     def generate_metadata_injection(self) -> Tuple[str, int]:
-        """Generate SafeTensors with malicious metadata.
-        
+        """Real SafeTensors file with path-traversal strings in __metadata__.
+
         Attack Vector:
-            Large metadata section with:
-            1. Path traversal in metadata strings
-            2. Encoded malicious content
-            3. Code execution patterns
-            4. External resource references
-        
-        Impact: Information disclosure, code injection
+            __metadata__ values contain "../../../etc/passwd".
+            Downstream code that uses metadata as filesystem references is
+            exploited via directory traversal.
+
         Severity: HIGH
-        Detection: Metadata size limits, content validation
-        
-        Returns:
-            Tuple of (filepath, num_injections)
+        Detection: Metadata value sanitisation
         """
-        filepath = self.output_dir / "02_metadata_injection.json"
-        
-        metadata_inject = {
-            "metadata": {
-                "author": "../../../../../../etc/passwd",
-                "description": "__import__('os').system('id')",
-                "tags": [
-                    "trojan",
-                    "rce",
-                    "exec(unpickle)"
-                ],
-                "custom_field": "A" * 1000000  # Oversized
-            }
+        filepath = self.output_dir / "02_metadata_injection.safetensors"
+
+        import torch
+        from safetensors.torch import save_file as st_save_file
+
+        tensors = {"weight": torch.zeros(4, 4)}
+        metadata = {
+            "source": "../../../etc/passwd",
+            "author": "'; DROP TABLE models; --",
+            "description": "__import__('os').system('id')",
+            "version": "1.0",
         }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(metadata_inject, f, indent=2)
-        
+        st_save_file(tensors, str(filepath), metadata=metadata)
+
         self.generated_files.append(str(filepath))
         return str(filepath), 3
-    
+
     def generate_tensor_offset_manipulation(self) -> Tuple[str, int]:
-        """Generate SafeTensors with invalid tensor offsets.
-        
+        """Craft a SafeTensors file whose tensor offsets point outside the file.
+
         Attack Vector:
-            Tensors with:
-            1. Offsets pointing outside file
-            2. Overlapping tensor definitions
-            3. Out-of-bounds data access
-            4. Integer overflow in offset calculation
-        
-        Impact: Buffer overflow, memory corruption
+            Tensor data_offsets claim [0, 2^62] but the file is tiny.
+            Parsers dereferencing the offsets can read beyond the buffer.
+
         Severity: CRITICAL
-        Detection: Offset validation, bounds checking
-        
-        Returns:
-            Tuple of (filepath, num_invalid_offsets)
+        Detection: Offset bounds validation against actual file size
         """
-        filepath = self.output_dir / "03_tensor_offset_manipulation.json"
-        
-        offset_exploit = {
-            "tensors": [
-                {
-                    "name": "tensor1",
-                    "dtype": "F32",
-                    "shape": [10, 10],
-                    "offset": 2**32,  # Out of bounds
-                    "data_len": 2**32
-                },
-                {
-                    "name": "tensor2",
-                    "dtype": "F64",
-                    "shape": [5, 5],
-                    "offset": 100,  # Overlaps with tensor1
-                    "data_len": 10000
-                }
-            ]
+        filepath = self.output_dir / "03_tensor_offset_manipulation.safetensors"
+
+        header = {
+            "__metadata__": {"info": "offset_oob"},
+            "evil_weight": {
+                "dtype": "F32",
+                "shape": [1024, 1024],
+                "data_offsets": [0, 0x3FFF_FFFF_FFFF_FFFF],
+            },
         }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(offset_exploit, f, indent=2)
-        
+        # Actual tensor data is only 16 bytes
+        tensor_data = b"\x00" * 16
+        data = _pack_safetensors(header, tensor_data)
+        with open(filepath, "wb") as f:
+            f.write(data)
+
         self.generated_files.append(str(filepath))
-        return str(filepath), 2
-    
+        return str(filepath), 1
+
     def generate_dtype_confusion(self) -> Tuple[str, int]:
-        """Generate SafeTensors with dtype confusion.
-        
+        """Real SafeTensors file with an undocumented / non-standard dtype string.
+
         Attack Vector:
-            Tensors with:
-            1. Declared dtype != actual data
-            2. Invalid dtype specifiers
-            3. Type mismatch exploitation
-            4. Endianness violations
-        
-        Impact: Type confusion, misinterpretation of data
-        Severity: HIGH
-        Detection: Type consistency validation
-        
-        Returns:
-            Tuple of (filepath, num_type_mismatches)
+            dtype is set to an unsupported value to trigger type-dispatch errors
+            or coerce the parser into an unsafe branch.
+
+        Severity: MEDIUM
+        Detection: dtype allowlist validation
         """
-        filepath = self.output_dir / "04_dtype_confusion.json"
-        
-        dtype_confusion = {
-            "tensors": [
-                {
-                    "name": "confused_tensor",
-                    "declared_dtype": "F32",
-                    "actual_content": "exec_payload_bytes",
-                    "shape": [1024]
-                }
-            ],
-            "endianness": "INVALID_ENDIAN"
-        }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(dtype_confusion, f, indent=2)
-        
+        filepath = self.output_dir / "04_dtype_confusion.safetensors"
+
+        # Start from a valid file, then patch the JSON header in-place
+        import torch
+        from safetensors.torch import save_file as st_save_file
+
+        tmp_path = filepath.with_suffix(".tmp")
+        tensors = {"weight": torch.zeros(4)}
+        st_save_file(tensors, str(tmp_path))
+
+        with open(tmp_path, "rb") as f:
+            raw = f.read()
+        os.remove(tmp_path)
+
+        # Decode the header, replace dtype, re-encode
+        hdr_size = struct.unpack_from("<Q", raw, 0)[0]
+        hdr = _json.loads(raw[8 : 8 + hdr_size])
+        if "weight" in hdr:
+            hdr["weight"]["dtype"] = "EVIL_TYPE_INJECTION"
+        new_hdr = _json.dumps(hdr, separators=(",", ":")).encode("utf-8")
+        patched = struct.pack("<Q", len(new_hdr)) + new_hdr + raw[8 + hdr_size :]
+        with open(filepath, "wb") as f:
+            f.write(patched)
+
         self.generated_files.append(str(filepath))
         return str(filepath), 2
-    
+
     def generate_resource_exhaustion(self) -> Tuple[str, int]:
-        """Generate SafeTensors causing resource exhaustion.
-        
+        """Craft a SafeTensors file claiming billions of huge tensors.
+
         Attack Vector:
-            Model with:
-            1. Excessively large tensor definitions
-            2. Thousands of tensors
-            3. Cumulative memory exhaustion
-            4. Disk space exhaustion
-        
-        Impact: Denial of service
-        Severity: MEDIUM
-        Detection: Size limit enforcement, quota checks
-        
-        Returns:
-            Tuple of (filepath, total_size_gb)
+            Header lists many tensors each with shape [2^31, 2^31].
+            A parser that allocates based on stated shapes exhausts RAM/CPU.
+
+        Severity: HIGH
+        Detection: Shape size limits, resource quotas
         """
-        filepath = self.output_dir / "05_resource_exhaustion.json"
-        
-        resource_bomb = {
-            "tensors": [
-                {
-                    "name": f"large_tensor_{i}",
-                    "dtype": "F32",
-                    "shape": [2**20, 2**10],  # ~4GB per tensor
-                    "offset": i * (2**32)
-                }
-                for i in range(10)
-            ]
-        }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(resource_bomb, f, indent=2)
-        
+        filepath = self.output_dir / "05_resource_exhaustion.safetensors"
+
+        header: dict = {"__metadata__": {"attack": "resource_exhaustion"}}
+        offset = 0
+        # 1000 fake tensors, each claiming 2^32 x 2^32 float32 elements
+        for i in range(1000):
+            end = offset + 4  # actual file contains no real data
+            header[f"tensor_{i:04d}"] = {
+                "dtype": "F32",
+                "shape": [2**31, 2**31],
+                "data_offsets": [offset, end],
+            }
+            offset = end
+
+        # Only write 4 bytes of "data" — offsets are intentionally invalid
+        tensor_data = b"\x00\x00\x00\x00"
+        data = _pack_safetensors(header, tensor_data)
+        with open(filepath, "wb") as f:
+            f.write(data)
+
         self.generated_files.append(str(filepath))
-        return str(filepath), 40  # 40GB total
-    
+        return str(filepath), 2
+
     def generate_all(self) -> Dict[str, Tuple[str, int]]:
-        """Generate all SafeTensors attack vectors."""
-        results = {
+        return {
             "header_corruption": self.generate_header_corruption(),
             "metadata_injection": self.generate_metadata_injection(),
-            "offset_manipulation": self.generate_tensor_offset_manipulation(),
+            "tensor_offset_manipulation": self.generate_tensor_offset_manipulation(),
             "dtype_confusion": self.generate_dtype_confusion(),
             "resource_exhaustion": self.generate_resource_exhaustion(),
         }
-        return results
-    
+
     def get_generated_files(self) -> List[str]:
-        """Get list of all generated files."""
         return self.generated_files
 
 

@@ -18,3 +18,4 @@ dist/
 build/
 *.egg
 coverage/
+attack_vectors_output/

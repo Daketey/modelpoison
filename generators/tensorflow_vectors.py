@@ -1,16 +1,70 @@
 """
 TensorFlow Attack Vector Generator
 
-Generates attack vectors for TensorFlow SavedModel and PB files:
-- .pb (protocol buffer format) - NATIVE with TensorFlow
-- SavedModel directories with complete structure
-- .tf (TensorFlow checkpoint)
-- Actual file read/write operations
+Generates real TensorFlow SavedModel directories (.pb + variables/) containing
+dangerous graph operations detectable by security scanners (ModelScan, etc.).
 
-Dependency handling:
-- Attempts native TensorFlow generation (requires tensorflow package)
-- Falls back to protobuf/JSON metadata if tensorflow unavailable
-- Tracks artifact_kind (native/metadata) and validation_status in output
+Output format: SavedModel directory (saved_model.pb + assets/ + variables/)
+Requires: tensorflow >= 2.x
+
+Attack Vectors
+--------------
+1. py_func_rce  [generate_py_func_rce]
+   Dangerous ops : EagerPyFunc
+   Method        : tf.py_function wrapping subprocess.run(['whoami'])
+   Trigger       : Any model inference call
+   Severity      : CRITICAL
+
+2. file_read_write  [generate_file_read_write_ops]
+   Dangerous ops : ReadFile, WriteFile
+   Method        : tf.io.read_file / tf.io.write_file as concrete graph ops
+   Targets       : /etc/passwd, /etc/shadow, ~/.aws/credentials, /tmp/exfil
+   Severity      : CRITICAL
+
+3. shell_command  [generate_shell_command_execution]
+   Dangerous ops : EagerPyFunc
+   Method        : subprocess.check_output via tf.py_function; includes reverse
+                   shell spawner (socket + os.dup2 + /bin/bash -i)
+   Severity      : CRITICAL
+
+4. custom_gradient  [generate_custom_gradient_injection]
+   Dangerous ops : EagerPyFunc
+   Method        : @tf.custom_gradient whose grad_fn contains tf.py_function
+                   calling subprocess — payload fires during backpropagation
+   Severity      : CRITICAL
+
+5. env_var_access  [generate_environment_variable_access]
+   Dangerous ops : EagerPyFunc
+   Method        : tf.py_function batch-reads 25 credential env vars
+                   (AWS_*, AZURE_*, OPENAI_API_KEY, GITHUB_TOKEN, DB_PASSWORD …)
+                   and offers write-to-file / env-poisoning exfiltration paths
+   Severity      : CRITICAL
+
+6. custom_op  [generate_custom_op_exploitation]
+   Dangerous ops : EagerPyFunc
+   Method        : ctypes.CDLL via tf.py_function to load arbitrary .so/.dll
+                   and invoke named entry points (init, main, run, execute)
+   Severity      : CRITICAL
+
+7. protobuf_exploit  [generate_protobuf_deserialization]
+   Dangerous ops : EagerPyFunc, ParseTensor
+   Method        : tf.io.parse_tensor on attacker-supplied bytes; secondary
+                   PyFunc path parses embedded exec: commands via os.system
+   Severity      : CRITICAL
+
+8. variable_init  [generate_variable_initialization_attack]
+   Dangerous ops : EagerPyFunc
+   Method        : tf.Variable init / restore hooks using tf.py_function;
+                   fetches remote config (urllib) and runs base64-encoded cmd
+   Severity      : HIGH
+
+Scanner Detection Notes
+-----------------------
+- ModelScan SavedModelTensorflowOpScan detects ReadFile / WriteFile directly
+  in the GraphDef node list of saved_model.pb.
+- EagerPyFunc ops (produced by tf.py_function / tf.py_func) are flagged by
+  op-allowlist scanners as they permit arbitrary Python execution.
+- All vectors produce genuine .pb files — no JSON stubs or placeholders.
 """
 
 import json

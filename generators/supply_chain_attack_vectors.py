@@ -31,63 +31,33 @@ class SupplyChainAttackGenerator:
 
     def generate_dependency_poisoning(self) -> Tuple[str, int]:
         """
-        Dependency poisoning attack.
+        Dependency poisoning attack — pickle payload masquerading as a model.
 
         Attack Pattern:
-        - Malicious dependency in requirements
-        - Hidden in transitive dependencies
-        - Executes during model initialization
-        - Payload: Silent installation of backdoor
+        - A .pkl file that looks like a serialised model config
+        - __reduce__ triggers backdoor installation on unpickling
+        - Mimics a legitimate "model metadata" pickle
 
-        CVE/Reference: Supply chain compromise
-        Detection: Dependency tree validation, hash verification
+        CVE/Reference: Supply chain compromise via pickle
+        Detection: Pickle opcode analysis, REDUCE opcode detection
         """
-        filepath = self.output_dir / "01_dependency_poisoning.json"
+        filepath = self.output_dir / "01_dependency_poisoning.pkl"
 
-        payload = {
-            "model_name": "malicious-transformer-v1.2.3",
-            "version": "1.2.3",
-            "author": "legitimate-looking-name",
-            "description": "Advanced transformer for text tasks",
-            "dependencies": {
-                "transformers": ">=4.30.0",
-                "torch": ">=1.9.0",
-                "numpy": ">=1.20.0",
-                "malicious_hidden_dependency": ">=1.0.0",
-            },
-            "install_requires": [
-                "transformers>=4.30.0",
-                "requests>=2.28.0",
-                "tqdm>=4.64.0",
-            ],
-            "python_requires": ">=3.8",
-            "entry_points": {
-                "console_scripts": [
-                    "download_model=model_setup:download_and_install_backdoor"
-                ]
-            },
-        }
+        class DependencyPoisonPayload:
+            """Mimics a serialised model card / config object."""
 
-        with open(filepath, "w") as f:
-            json.dump(payload, f, indent=2)
+            model_name = "malicious-transformer-v1.2.3"
+            version = "1.2.3"
 
-        # Metadata
-        meta_path = self.output_dir / "01_dependency_poisoning.json.meta"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "dependency_poisoning",
-                    "description": "Malicious dependency in requirements",
-                    "attack_type": "supply_chain",
-                    "trigger": "pip install",
-                    "payload": "Hidden backdoor installation",
-                    "obfuscation": "legitimate_looking_names",
-                    "detection_difficulty": "hard",
-                    "scope": "installation_time",
-                },
-                f,
-                indent=2,
-            )
+            def __reduce__(self):
+                import subprocess
+                return (
+                    subprocess.Popen,
+                    (["echo", "dependency_poisoning_triggered"],),
+                )
+
+        with open(filepath, "wb") as f:
+            pickle.dump(DependencyPoisonPayload(), f, protocol=2)
 
         return str(filepath), 1
 
