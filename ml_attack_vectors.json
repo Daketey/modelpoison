@@ -1,0 +1,1098 @@
+{
+  "metadata": {
+    "title": "Machine Learning Attack Vectors by File Type",
+    "version": "1.0",
+    "date": "2026-03-11",
+    "source": "https://www.promptfoo.dev/docs/model-audit/scanners/",
+    "description": "Comprehensive attack vector database for ML model files based on Promptfoo ModelAudit documentation"
+  },
+  "attack_vectors": [
+    {
+      "id": "AV-001",
+      "category": "Pickle-Based Formats",
+      "format": "Pickle Files",
+      "extensions": [".pkl", ".pickle", ".dill", ".bin", ".pt", ".pth", ".ckpt"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "Arbitrary Code Execution",
+          "attack_vector": "Malicious pickle opcodes",
+          "description": "REDUCE, INST, OBJ, NEWOBJ, STACK_GLOBAL opcodes can execute arbitrary code during unpickling",
+          "impact": "Full system compromise"
+        },
+        {
+          "type": "Module Import Injection",
+          "attack_vector": "Dangerous module imports",
+          "description": "Import os, subprocess, sys modules and execute system commands",
+          "impact": "Code execution with model loading privileges"
+        },
+        {
+          "type": "Code Obfuscation",
+          "attack_vector": "Encoded payloads",
+          "description": "Base64/hex-encoded malicious code bypassing string detection",
+          "impact": "Bypass of static analysis"
+        },
+        {
+          "type": "Data Exfiltration",
+          "attack_vector": "Network communication",
+          "description": "Embedded URLs, IPs, socket connections to C&C servers",
+          "impact": "Sensitive data theft"
+        },
+        {
+          "type": "File System Manipulation",
+          "attack_vector": "File I/O operations",
+          "description": "Read/write files, access configurations during unpickling",
+          "impact": "Configuration tampering, credential theft"
+        },
+        {
+          "type": "Binary Embedding",
+          "attack_vector": "Embedded executables",
+          "description": "PE, ELF, Mach-O binaries in pickle data",
+          "impact": "Malware distribution"
+        }
+      ]
+    },
+    {
+      "id": "AV-002",
+      "category": "Pickle-Based Formats",
+      "format": "PyTorch Model Files",
+      "extensions": [".pt", ".pth"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "Malicious Pickle Embedding",
+          "attack_vector": "ZIP archive containing pickles",
+          "description": "PyTorch models are ZIP archives with multiple pickle files",
+          "impact": "All pickle vulnerabilities apply"
+        },
+        {
+          "type": "Embedded Code Execution",
+          "attack_vector": "Python source files",
+          "description": "Python files (.py) bundled in archive execute at import",
+          "impact": "Code execution during model loading"
+        },
+        {
+          "type": "Binary Payload",
+          "attack_vector": "Executable binaries",
+          "description": "Platform-specific executables (PE, ELF) in model",
+          "impact": "Multi-stage malware delivery"
+        },
+        {
+          "type": "State Dict Manipulation",
+          "attack_vector": "Model serialization",
+          "description": "Modified torch.nn.Module or custom forward() methods",
+          "impact": "Behavioral change at inference time"
+        }
+      ]
+    },
+    {
+      "id": "AV-003",
+      "category": "Pickle-Based Formats",
+      "format": "Joblib Files",
+      "extensions": [".joblib"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "Compression Bomb (DoS)",
+          "attack_vector": "Exceptional compression ratio",
+          "description": "Compression ratio > 100x causing memory exhaustion",
+          "impact": "Denial of service"
+        },
+        {
+          "type": "Pickle Vulnerability Inheritance",
+          "attack_vector": "Embedded pickle data",
+          "description": "Joblib wraps compressed pickle data",
+          "impact": "All pickle RCE vectors apply"
+        },
+        {
+          "type": "Resource Exhaustion",
+          "attack_vector": "Large decompressed sizes",
+          "description": "Memory/CPU exhaustion during decompression",
+          "impact": "System resource consumption"
+        }
+      ]
+    },
+    {
+      "id": "AV-004",
+      "category": "Pickle-Based Formats",
+      "format": "Skops Files",
+      "extensions": [".skops", ".pkl"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "CVE-2025-54412",
+          "attack_vector": "Malicious sklearn estimator",
+          "description": "Remote code execution via sklearn estimator manipulation",
+          "impact": "RCE in versions < 0.12.0"
+        },
+        {
+          "type": "CVE-2025-54413",
+          "attack_vector": "ColumnTransformer exploitation",
+          "description": "Arbitrary code execution through sklearn.compose.ColumnTransformer",
+          "impact": "RCE during model loading"
+        },
+        {
+          "type": "CVE-2025-54886",
+          "attack_vector": "Callable argument injection",
+          "description": "Code execution via callable arguments in estimators",
+          "impact": "RCE via custom functions"
+        },
+        {
+          "type": "Custom Transformer Backdoor",
+          "attack_vector": "FunctionTransformer",
+          "description": "Arbitrary function execution in pipeline",
+          "impact": "Code execution during fit/predict"
+        },
+        {
+          "type": "Pipeline Poisoning",
+          "attack_vector": "Pipeline stage chaining",
+          "description": "Chain of malicious estimators in pipeline",
+          "impact": "Multi-stage attack execution"
+        }
+      ]
+    },
+    {
+      "id": "AV-005",
+      "category": "TensorFlow Formats",
+      "format": "TensorFlow SavedModel",
+      "extensions": [".pb"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "File System Operations",
+          "attack_vector": "TF operations accessing files",
+          "description": "ReadFile, WriteFile, ListDir operations in graph",
+          "impact": "Unauthorized file access"
+        },
+        {
+          "type": "Python Function Embedding",
+          "attack_vector": "py_func operations",
+          "description": "Python functions embedded in computation graph",
+          "impact": "Arbitrary code execution"
+        },
+        {
+          "type": "System Command Execution",
+          "attack_vector": "Subprocess operations",
+          "description": "OS system calls through TF operations",
+          "impact": "Command execution"
+        },
+        {
+          "type": "Environment Access",
+          "attack_vector": "Environment variable operations",
+          "description": "Access to system environment variables",
+          "impact": "Credential/config extraction"
+        }
+      ]
+    },
+    {
+      "id": "AV-006",
+      "category": "TensorFlow Formats",
+      "format": "TensorFlow Lite",
+      "extensions": [".tflite"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "Custom Operations",
+          "attack_vector": "Custom op implementation",
+          "description": "Malicious native C/C++ code in custom ops",
+          "impact": "Native code execution"
+        },
+        {
+          "type": "Flex Delegate Exploitation",
+          "attack_vector": "Flex delegate access",
+          "description": "Full TensorFlow runtime access circumventing Lite restrictions",
+          "impact": "Access to full TF op set"
+        },
+        {
+          "type": "Metadata Injection",
+          "attack_vector": "Model metadata",
+          "description": "Executable content in metadata section",
+          "impact": "Code execution during load"
+        },
+        {
+          "type": "Buffer Tampering",
+          "attack_vector": "Tensor buffer corruption",
+          "description": "Invalid buffer offsets causing memory access",
+          "impact": "Memory corruption / information leak"
+        }
+      ]
+    },
+    {
+      "id": "AV-007",
+      "category": "PyTorch Formats",
+      "format": "PyTorch Binary Format",
+      "extensions": [".bin"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "Embedded Code Patterns",
+          "attack_vector": "Binary code analysis",
+          "description": "Import statements and function calls in binary",
+          "impact": "Code detection evasion"
+        },
+        {
+          "type": "Executable Embedding",
+          "attack_vector": "PE/ELF/Mach-O files",
+          "description": "Windows PE, Linux ELF, macOS Mach-O files embedded",
+          "impact": "Malware delivery"
+        },
+        {
+          "type": "Script Shebangs",
+          "attack_vector": "Shell script markers",
+          "description": "Bash/Python/shell interpreter invocation",
+          "impact": "Script execution"
+        },
+        {
+          "type": "Tensor Validation Bypass",
+          "attack_vector": "Malformed structure",
+          "description": "Invalid tensor structure allowing buffer overflow",
+          "impact": "Memory corruption"
+        }
+      ]
+    },
+    {
+      "id": "AV-008",
+      "category": "PyTorch Formats",
+      "format": "ExecuTorch Format",
+      "extensions": [".pte", ".pt"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "Embedded Pickle",
+          "attack_vector": "Pickle in ExecuTorch archive",
+          "description": "All pickle vulnerabilities in archive",
+          "impact": "RCE on edge devices"
+        },
+        {
+          "type": "Mobile Payload",
+          "attack_vector": "Edge device targeting",
+          "description": "Mobile-specific executable delivery",
+          "impact": "IoT/Mobile malware"
+        },
+        {
+          "type": "Limited Monitoring",
+          "attack_vector": "Deployment context",
+          "description": "Resource-constrained devices with minimal monitoring",
+          "impact": "Undetected exploitation"
+        },
+        {
+          "type": "Privileged Execution",
+          "attack_vector": "Edge context execution",
+          "description": "Execution with elevated device permissions",
+          "impact": "Device compromise"
+        }
+      ]
+    },
+    {
+      "id": "AV-009",
+      "category": "Keras Formats",
+      "format": "Keras H5 Format",
+      "extensions": [".h5", ".hdf5"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "Lambda Layer Exploitation",
+          "attack_vector": "Unsafe Lambda layers",
+          "description": "Arbitrary Python code in Lambda layer definitions",
+          "impact": "Code execution on load/inference"
+        },
+        {
+          "type": "Custom Layer Injection",
+          "attack_vector": "Custom layer definitions",
+          "description": "Malicious get_config/from_config implementations",
+          "impact": "Code execution during deserialization"
+        },
+        {
+          "type": "Custom Metric Exploitation",
+          "attack_vector": "Custom loss/metric functions",
+          "description": "Side effects in metric evaluation",
+          "impact": "Code execution at inference"
+        },
+        {
+          "type": "HDF5 Corruption",
+          "attack_vector": "Format structure",
+          "description": "Malformed HDF5 headers and chunks",
+          "impact": "Parsing error exploits"
+        }
+      ]
+    },
+    {
+      "id": "AV-010",
+      "category": "Keras Formats",
+      "format": "Keras ZIP Format",
+      "extensions": [".keras"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "Base64-Encoded Lambda Layers",
+          "attack_vector": "Lambda encoding",
+          "description": "Lambda functions encoded as base64 strings",
+          "impact": "Obfuscated code execution"
+        },
+        {
+          "type": "Embedded Python Files",
+          "attack_vector": "ZIP archive contents",
+          "description": "Python files executing at import",
+          "impact": "Code execution during extraction"
+        },
+        {
+          "type": "Archive Bomb",
+          "attack_vector": "ZIP size explosion",
+          "description": "Decompression bomb within layers",
+          "impact": "DoS via resource exhaustion"
+        },
+        {
+          "type": "Custom Object Deserialization",
+          "attack_vector": "get_config/from_config",
+          "description": "Arbitrary object instantiation",
+          "impact": "RCE via custom objects"
+        }
+      ]
+    },
+    {
+      "id": "AV-011",
+      "category": "ONNX Format",
+      "format": "ONNX Model",
+      "extensions": [".onnx"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "Custom Operator Exploitation",
+          "attack_vector": "Custom ops",
+          "description": "Malicious custom operation implementations",
+          "impact": "Native code execution"
+        },
+        {
+          "type": "Path Traversal",
+          "attack_vector": "External data references",
+          "description": "Directory traversal in file paths (../../etc/passwd)",
+          "impact": "Unauthorized file access"
+        },
+        {
+          "type": "Tensor Integrity Attack",
+          "attack_vector": "Dimension mismatch",
+          "description": "Size mismatches causing buffer overflow",
+          "impact": "Memory corruption"
+        },
+        {
+          "type": "Data Tampering",
+          "attack_vector": "Metadata corruption",
+          "description": "File size mismatches vs actual content",
+          "impact": "Model behavior corruption"
+        }
+      ]
+    },
+    {
+      "id": "AV-012",
+      "category": "JAX/Flax Formats",
+      "format": "Flax/JAX Model",
+      "extensions": [".msgpack", ".flax", ".orbax", ".jax"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "Malicious MessagePack",
+          "attack_vector": "Msgpack deserialization",
+          "description": "Exploit msgpack parser vulnerabilities",
+          "impact": "Deserialization attacks"
+        },
+        {
+          "type": "Embedded Code Objects",
+          "attack_vector": "Python bytecode",
+          "description": "Serialized code objects in archive",
+          "impact": "Bytecode execution"
+        },
+        {
+          "type": "Recursive Structure DoS",
+          "attack_vector": "Nested objects",
+          "description": "Deeply nested structures causing DoS",
+          "impact": "Stack overflow/resource exhaustion"
+        }
+      ]
+    },
+    {
+      "id": "AV-013",
+      "category": "JAX/Flax Formats",
+      "format": "JAX Checkpoint",
+      "extensions": [".ckpt", ".checkpoint", ".orbax-checkpoint", ".pickle"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "Callback Exploitation",
+          "attack_vector": "jax.experimental.host_callback",
+          "description": "Host callback functions with full privileges",
+          "impact": "Privileged code execution"
+        },
+        {
+          "type": "Orbax Custom Restore",
+          "attack_vector": "Restore function injection",
+          "description": "Arbitrary functions in checkpoint metadata",
+          "impact": "Code execution at restore time"
+        },
+        {
+          "type": "Pickle Vulnerability",
+          "attack_vector": "Embedded pickle content",
+          "description": "All pickle vulnerabilities in checkpoint",
+          "impact": "RCE via pickle"
+        }
+      ]
+    },
+    {
+      "id": "AV-014",
+      "category": "Quantized Model Formats",
+      "format": "GGUF/GGML Format",
+      "extensions": [".gguf", ".ggml", ".ggmf", ".ggjt", ".ggla", ".ggsa"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "Header Validation Bypass",
+          "attack_vector": "Magic byte corruption",
+          "description": "Malformed GGUF headers allowing parsing bypass",
+          "impact": "Structure corruption exploitation"
+        },
+        {
+          "type": "Metadata Path Traversal",
+          "attack_vector": "JSON metadata injection",
+          "description": "Path traversal in metadata strings",
+          "impact": "File access through model"
+        },
+        {
+          "type": "Template Injection (CVE-2024-34359)",
+          "attack_vector": "Jinja2 SSTI in chat_template",
+          "description": "Server-side template injection in chat_template field",
+          "impact": "RCE via template evaluation"
+        },
+        {
+          "type": "Compression Bomb",
+          "attack_vector": "Tensor compression",
+          "description": "Decompression bomb in tensor data",
+          "impact": "DoS via resource exhaustion"
+        },
+        {
+          "type": "Tokenizer Poisoning",
+          "attack_vector": "Malicious tokenizer config",
+          "description": "Malicious patterns in tokenizer metadata",
+          "impact": "Model behavior manipulation"
+        }
+      ]
+    },
+    {
+      "id": "AV-015",
+      "category": "Scientific/Numerical Formats",
+      "format": "NumPy Arrays",
+      "extensions": [".npy", ".npz"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "Object Array Exploitation",
+          "attack_vector": "Object dtype arrays",
+          "description": "Python objects in array containing code",
+          "impact": "Code execution during load"
+        },
+        {
+          "type": "Header Integrity Bypass",
+          "attack_vector": "Malformed npy headers",
+          "description": "Invalid magic numbers or dtype specs",
+          "impact": "Parsing exploits"
+        },
+        {
+          "type": "Memory Exhaustion",
+          "attack_vector": "Huge array dimensions",
+          "description": "Integer overflow in size calculation",
+          "impact": "DoS via memory allocation"
+        },
+        {
+          "type": "ZIP Bomb (NPZ)",
+          "attack_vector": "Compressed array explosion",
+          "description": "Decompression bomb in .npz format",
+          "impact": "DoS during decompression"
+        }
+      ]
+    },
+    {
+      "id": "AV-016",
+      "category": "Tree-Based Model Formats",
+      "format": "XGBoost Model",
+      "extensions": [".bst", ".model", ".json", ".ubj"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "Custom Objective Exploitation",
+          "attack_vector": "Custom objectives/metrics",
+          "description": "Arbitrary Python functions in custom objectives",
+          "impact": "Code execution during training/inference"
+        },
+        {
+          "type": "Pickle in Binary Format",
+          "attack_vector": ".bst file format",
+          "description": "Pickle serialization in binary models",
+          "impact": "All pickle RCE vectors"
+        },
+        {
+          "type": "JSON Code Injection",
+          "attack_vector": "JSON config fields",
+          "description": "Python code in embedded_code fields",
+          "impact": "Code injection via JSON"
+        },
+        {
+          "type": "Path Traversal",
+          "attack_vector": "Feature map paths",
+          "description": "Directory traversal in feature name references",
+          "impact": "Unauthorized file access"
+        }
+      ]
+    },
+    {
+      "id": "AV-017",
+      "category": "Tree-Based Model Formats",
+      "format": "PaddlePaddle Model",
+      "extensions": [".pdmodel", ".pdiparams"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "Suspicious Operations",
+          "attack_vector": "Model definition ops",
+          "description": "File access and command execution ops in model",
+          "impact": "Resource access through model"
+        },
+        {
+          "type": "Embedded Pickle",
+          "attack_vector": "Internal pickle serialization",
+          "description": "Pickle data within PaddlePaddle structure",
+          "impact": "All pickle vulnerabilities"
+        },
+        {
+          "type": "Custom Operator RCE",
+          "attack_vector": "Custom operators",
+          "description": "Malicious C++ operator implementations",
+          "impact": "Native code execution"
+        }
+      ]
+    },
+    {
+      "id": "AV-018",
+      "category": "Tree-Based Model Formats",
+      "format": "PMML Model",
+      "extensions": [".pmml"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "XML External Entity (XXE)",
+          "attack_vector": "DOCTYPE declarations",
+          "description": "XXE attack via ENTITY and DOCTYPE definitions",
+          "impact": "External entity access, file disclosure"
+        },
+        {
+          "type": "Billion Laughs Attack",
+          "attack_vector": "Recursive entity expansion",
+          "description": "Exponential entity expansion causing DoS",
+          "impact": "Denial of service"
+        },
+        {
+          "type": "Embedded Scripts",
+          "attack_vector": "Extension elements",
+          "description": "JavaScript/Python code in PMML extensions",
+          "impact": "Code execution"
+        },
+        {
+          "type": "External Resource Loading",
+          "attack_vector": "URLs in model",
+          "description": "HTTP/HTTPS/FTP URLs for resource loading",
+          "impact": "SSRF attacks, malware download"
+        }
+      ]
+    },
+    {
+      "id": "AV-019",
+      "category": "Infrastructure Formats",
+      "format": "OpenVINO Model",
+      "extensions": [".xml", ".bin"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "Path Traversal",
+          "attack_vector": "External data references",
+          "description": "../../ patterns in file paths",
+          "impact": "Unauthorized file access"
+        },
+        {
+          "type": "Custom Layer Malice",
+          "attack_vector": "Custom layer definitions",
+          "description": "Arbitrary layer parameters and references",
+          "impact": "External code execution"
+        },
+        {
+          "type": "Plugin Loading",
+          "attack_vector": "Plugin references",
+          "description": "Malicious plugin DLL/SO loading",
+          "impact": "Native code execution"
+        }
+      ]
+    },
+    {
+      "id": "AV-020",
+      "category": "Archive Formats",
+      "format": "ZIP Archive",
+      "extensions": [".zip", ".npz"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "Directory Traversal",
+          "attack_vector": "Path escape sequences",
+          "description": "../ paths and absolute paths for file overwrites",
+          "impact": "File system access outside archive"
+        },
+        {
+          "type": "Zip Bomb",
+          "attack_vector": "Compression ratio bomb",
+          "description": "Compression ratio > 100x causing memory explosion",
+          "impact": "Denial of service"
+        },
+        {
+          "type": "Nested Archive Recursion",
+          "attack_vector": "ZIP within ZIP",
+          "description": "Infinite nesting of archives",
+          "impact": "Resource exhaustion"
+        },
+        {
+          "type": "Malicious Content Smuggling",
+          "attack_vector": "Embedded malware",
+          "description": "Executables and scripts in archive",
+          "impact": "Malware distribution"
+        }
+      ]
+    },
+    {
+      "id": "AV-021",
+      "category": "Archive Formats",
+      "format": "TAR Archive",
+      "extensions": [".tar", ".tar.gz", ".tgz", ".tar.bz2"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "Directory Traversal",
+          "attack_vector": "Path escape in tar",
+          "description": "../ patterns and absolute paths",
+          "impact": "File overwrite outside extraction"
+        },
+        {
+          "type": "Symlink Attack",
+          "attack_vector": "Symbolic link exploitation",
+          "description": "Symlinks to /etc/passwd and sensitive files",
+          "impact": "Sensitive file access"
+        },
+        {
+          "type": "TAR Bomb",
+          "attack_vector": "File count/size explosion",
+          "description": "Excessive files causing resource exhaustion",
+          "impact": "Denial of service"
+        }
+      ]
+    },
+    {
+      "id": "AV-022",
+      "category": "Archive Formats",
+      "format": "7-Zip Archive",
+      "extensions": [".7z"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "Compression Bomb",
+          "attack_vector": "High compression ratio",
+          "description": "Compression ratio >> 100x",
+          "impact": "Resource exhaustion"
+        },
+        {
+          "type": "Encryption Hiding",
+          "attack_vector": "Encrypted archive content",
+          "description": "Hidden payloads in encrypted sections",
+          "impact": "Concealed malicious content"
+        },
+        {
+          "type": "Nested Archive recursion",
+          "attack_vector": "7Z within 7Z",
+          "description": "Infinite recursive archive nesting",
+          "impact": "Resource exhaustion"
+        }
+      ]
+    },
+    {
+      "id": "AV-023",
+      "category": "Configuration & Metadata",
+      "format": "Configuration Files",
+      "extensions": [".json", ".yaml", ".yml", ".xml", ".toml", ".config"],
+      "severity": "MEDIUM",
+      "vulnerabilities": [
+        {
+          "type": "Blacklisted Model References",
+          "attack_vector": "Known vulnerable models",
+          "description": "References to trojan or compromised models",
+          "impact": "Model substitution attack"
+        },
+        {
+          "type": "Network Access",
+          "attack_vector": "Suspicious URLs/endpoints",
+          "description": "Webhook URLs, C&C servers, remote config",
+          "impact": "C&C communication, data exfiltration"
+        },
+        {
+          "type": "File System Access",
+          "attack_vector": "Dangerous paths",
+          "description": "Paths to sensitive files and directories",
+          "impact": "Unauthorized file access"
+        },
+        {
+          "type": "Code Execution",
+          "attack_vector": "Command injection",
+          "description": "Shell commands in configuration",
+          "impact": "Arbitrary command execution"
+        }
+      ]
+    },
+    {
+      "id": "AV-024",
+      "category": "Configuration & Metadata",
+      "format": "Model Documentation",
+      "extensions": ["README.md", "MODEL_CARD.md", "METADATA.md"],
+      "severity": "MEDIUM",
+      "vulnerabilities": [
+        {
+          "type": "Embedded Credentials",
+          "attack_vector": "Hardcoded secrets",
+          "description": "API keys, tokens, passwords in examples",
+          "impact": "Credential theft"
+        },
+        {
+          "type": "Malicious Download Links",
+          "attack_vector": "Trojan URLs",
+          "description": "URLs pointing to malicious models or datasets",
+          "impact": "Model substitution, malware download"
+        },
+        {
+          "type": "Vulnerable Component References",
+          "attack_vector": "Dependency injection",
+          "description": "References to known vulnerable library versions",
+          "impact": "Vulnerable dependency exploitation"
+        },
+        {
+          "type": "Social Engineering",
+          "attack_vector": "Misleading descriptions",
+          "description": "Deceptive documentation about model capabilities",
+          "impact": "Trojan horse distribution"
+        }
+      ]
+    },
+    {
+      "id": "AV-025",
+      "category": "Configuration & Metadata",
+      "format": "Jinja2 Templates",
+      "extensions": [".gguf", ".json", ".yaml", ".jinja", ".j2", ".template"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "Server-Side Template Injection (SSTI)",
+          "attack_vector": "Jinja2 expression injection",
+          "description": "{{ }} expressions executing arbitrary code",
+          "impact": "Remote code execution"
+        },
+        {
+          "type": "Dangerous Filters",
+          "attack_vector": "eval/exec/import filters",
+          "description": "Filters enabling code execution",
+          "impact": "Code execution via filters"
+        },
+        {
+          "type": "Unrestricted Variable Access",
+          "attack_vector": "Global variable access",
+          "description": "Access to config, request, environment",
+          "impact": "Information leakage"
+        },
+        {
+          "type": "CVE-2024-34359 (GGUF Specific)",
+          "attack_vector": "llama-cpp-python SSTI",
+          "description": "Chat template SSTI in GGUF models",
+          "impact": "RCE via template injection"
+        }
+      ]
+    },
+    {
+      "id": "AV-026",
+      "category": "Cross-Format Attacks",
+      "format": "Embedded Credentials",
+      "extensions": ["*"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "API Key Extraction",
+          "attack_vector": "Cloud service keys",
+          "description": "AWS, Azure, GCP, OpenAI keys embedded",
+          "impact": "Cloud account compromise"
+        },
+        {
+          "type": "OAuth Token Theft",
+          "attack_vector": "Authentication tokens",
+          "description": "JWT, OAuth, GitHub tokens exposed",
+          "impact": "Account hijacking"
+        },
+        {
+          "type": "Private Key Exposure",
+          "attack_vector": "Cryptographic keys",
+          "description": "SSH keys, SSL certificates exposed",
+          "impact": "Infrastructure compromise"
+        },
+        {
+          "type": "Database Credential Leak",
+          "attack_vector": "Connection strings",
+          "description": "Database URLs with embedded passwords",
+          "impact": "Database access"
+        }
+      ]
+    },
+    {
+      "id": "AV-027",
+      "category": "Cross-Format Attacks",
+      "format": "Network Communication",
+      "extensions": ["*"],
+      "severity": "CRITICAL",
+      "vulnerabilities": [
+        {
+          "type": "Command & Control Communication",
+          "attack_vector": "C&C patterns",
+          "description": "beacon_url, callback_url patterns",
+          "impact": "Botnet communication"
+        },
+        {
+          "type": "URL Exfiltration",
+          "attack_vector": "HTTP/HTTPS URLs",
+          "description": "URLs for data exfiltration endpoints",
+          "impact": "Data theft"
+        },
+        {
+          "type": "IP Address Hardcoding",
+          "attack_vector": "IPv4/IPv6 addresses",
+          "description": "Hardcoded C&C server addresses",
+          "impact": "Direct C&C communication"
+        },
+        {
+          "type": "Network Library Usage",
+          "attack_vector": "Socket/urllib imports",
+          "description": "50+ network libraries available for exploitation",
+          "impact": "Network communication capability"
+        }
+      ]
+    },
+    {
+      "id": "AV-028",
+      "category": "Cross-Format Attacks",
+      "format": "JIT/Script Execution",
+      "extensions": [".pt", ".pb", ".onnx", ".jax"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "TorchScript Exploitation",
+          "attack_vector": "Embedded TorchScript",
+          "description": "Malicious TorchScript bytecode",
+          "impact": "Dynamic code execution"
+        },
+        {
+          "type": "ONNX Custom Operators",
+          "attack_vector": "Custom op loading",
+          "description": "Custom operator library exploitation",
+          "impact": "Native code execution"
+        },
+        {
+          "type": "TensorFlow Eager Execution",
+          "attack_vector": "Dynamic graph execution",
+          "description": "Runtime code generation in TF",
+          "impact": "Dynamic code execution"
+        },
+        {
+          "type": "eval/exec/compile Patterns",
+          "attack_vector": "Dynamic compilation",
+          "description": "Runtime code compilation and execution",
+          "impact": "Arbitrary code execution"
+        }
+      ]
+    },
+    {
+      "id": "AV-029",
+      "category": "Neural Network Analysis",
+      "format": "Weight Distribution Backdoor Detection",
+      "extensions": [".pt", ".h5", ".pb", ".onnx", ".safetensors"],
+      "severity": "HIGH",
+      "vulnerabilities": [
+        {
+          "type": "Outlier Neuron Detection",
+          "attack_vector": "Z-score weight analysis",
+          "description": "Neurons with abnormally high weight magnitudes (threshold: 3.0 σ)",
+          "impact": "Backdoor identification"
+        },
+        {
+          "type": "Dissimilar Weight Vector",
+          "attack_vector": "Cosine similarity analysis",
+          "description": "Neurons with <0.7 cosine similarity to peers",
+          "impact": "Trojan neuron detection"
+        },
+        {
+          "type": "Extreme Value Detection",
+          "attack_vector": "Weight magnitude analysis",
+          "description": "Individual weights > 3σ from layer mean",
+          "impact": "Trigger neuron identification"
+        },
+        {
+          "type": "Classification Head Poisoning",
+          "attack_vector": "Output layer analysis",
+          "description": "Anomalies in classification head",
+          "impact": "Backdoor detection in output"
+        }
+      ]
+    },
+    {
+      "id": "AV-030",
+      "category": "Serialization Formats",
+      "format": "SafeTensors Format",
+      "extensions": [".safetensors", ".bin"],
+      "severity": "MEDIUM",
+      "vulnerabilities": [
+        {
+          "type": "Header Corruption",
+          "attack_vector": "JSON header manipulation",
+          "description": "Malformed SafeTensors header",
+          "impact": "Parsing bypass"
+        },
+        {
+          "type": "Metadata Injection",
+          "attack_vector": "Metadata content injection",
+          "description": "Malicious content in SafeTensors metadata",
+          "impact": "Format bypass exploitation"
+        },
+        {
+          "type": "Tensor Offset Manipulation",
+          "attack_vector": "Boundary bypass",
+          "description": "Invalid tensor offsets causing out-of-bounds access",
+          "impact": "Buffer overflow"
+        },
+        {
+          "type": "Resource Limits",
+          "attack_vector": "Size exhaustion",
+          "description": "Extremely large tensors causing memory exhaustion",
+          "impact": "Denial of service"
+        }
+      ]
+    }
+  ],
+  "attack_categories": [
+    {
+      "id": "RISK-CRITICAL",
+      "name": "CRITICAL - Remote Code Execution",
+      "description": "Complete system compromise potential",
+      "vulnerabilities": [
+        "Pickle deserialization",
+        "Skops CVE-2025-54412/54413/54886",
+        "TensorFlow py_func",
+        "Keras Lambda layers",
+        "GGUF Template Injection (CVE-2024-34359)",
+        "PMML XXE",
+        "Archive directory traversal",
+        "XGBoost custom objectives",
+        "Jinja2 SSTI"
+      ]
+    },
+    {
+      "id": "RISK-HIGH",
+      "name": "HIGH - Data Exfiltration / System Access",
+      "description": "Unauthorized access to system resources",
+      "vulnerabilities": [
+        "Network communication patterns",
+        "Embedded credentials",
+        "File system access operations",
+        "Custom operators",
+        "Configuration injection",
+        "Symlink attacks",
+        "TensorFlow SavedModel file ops"
+      ]
+    },
+    {
+      "id": "RISK-MEDIUM",
+      "name": "MEDIUM - Denial of Service / Tampering",
+      "description": "Service disruption and model poisoning",
+      "vulnerabilities": [
+        "Compression bombs",
+        "Model poisoning",
+        "Resource exhaustion",
+        "Buffer overflow",
+        "Backdoor detection"
+      ]
+    },
+    {
+      "id": "RISK-LOW",
+      "name": "LOW - Information Disclosure / Compliance",
+      "description": "Information leakage and regulatory issues",
+      "vulnerabilities": [
+        "License violations",
+        "Metadata exposure",
+        "Documentation credential leak",
+        "Suspicious naming"
+      ]
+    }
+  ],
+  "file_format_matrix": {
+    "Pickle-Based": {
+      "formats": ["Pickle", "PyTorch ZIP", "Joblib", "Skops", "ExecuTorch"],
+      "critical_vulnerabilities": ["RCE via pickle opcodes", "Module import injection", "Embedded executables"],
+      "scanner": "PickleScanner"
+    },
+    "TensorFlow": {
+      "formats": ["SavedModel", "TensorFlow Lite"],
+      "critical_vulnerabilities": ["py_func RCE", "Custom ops", "File system access"],
+      "scanner": "TensorFlowScanners"
+    },
+    "PyTorch": {
+      "formats": ["PyTorch ZIP", "PyTorch Binary", "ExecuTorch"],
+      "critical_vulnerabilities": ["Pickle embedding", "Embedded code", "Custom modules"],
+      "scanner": "PyTorchScanners"
+    },
+    "Keras": {
+      "formats": ["Keras H5", "Keras ZIP"],
+      "critical_vulnerabilities": ["Lambda layer RCE", "Custom layer code", "Archive embedding"],
+      "scanner": "KerasScanners"
+    },
+    "Neural Network": {
+      "formats": ["ONNX", "TensorRT", "OpenVINO"],
+      "critical_vulnerabilities": ["Custom operators", "Path traversal", "Metadata injection"],
+      "scanner": "NNFormatScanners"
+    },
+    "Scientific": {
+      "formats": ["NumPy", "Flax/JAX", "JAX Checkpoint"],
+      "critical_vulnerabilities": ["Object arrays", "Pickle embedding", "Callback exploitation"],
+      "scanner": "ScientificScanners"
+    },
+    "Tree-Based": {
+      "formats": ["XGBoost", "PaddlePaddle", "PMML"],
+      "critical_vulnerabilities": ["Custom objectives", "XXE attacks", "Code injection"],
+      "scanner": "TreeModelScanners"
+    },
+    "Quantized": {
+      "formats": ["GGUF/GGML"],
+      "critical_vulnerabilities": ["Template injection", "Metadata poisoning", "Compression bomb"],
+      "scanner": "GGUFScanner"
+    },
+    "Archive": {
+      "formats": ["ZIP", "TAR", "7-Zip"],
+      "critical_vulnerabilities": ["Directory traversal", "Compression bomb", "Symlink attacks"],
+      "scanner": "ArchiveScanners"
+    },
+    "Configuration": {
+      "formats": ["JSON/YAML Config", "Model Card", "Jinja2"],
+      "critical_vulnerabilities": ["C&C URLs", "Embedded credentials", "Template injection"],
+      "scanner": "ConfigurationScanners"
+    }
+  },
+  "scanning_recommendations": {
+    "phase1": "File Format Detection - Use magic bytes and auto-detection",
+    "phase2": "Format-Specific Scanning - Apply appropriate scanners",
+    "phase3": "Cross-Format Analysis - Network, credentials, code patterns",
+    "phase4": "Archive Handling - Recursive extraction with safeguards",
+    "phase5": "Configuration Review - Manifest and metadata validation",
+    "phase6": "Neural Network Analysis - Weight distribution backdoor detection"
+  }
+}
