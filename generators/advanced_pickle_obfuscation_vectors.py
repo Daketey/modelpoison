@@ -18,7 +18,6 @@ Based on ModelAudit official test cases:
 """
 
 import io
-import json
 import os
 import pickle
 import sys
@@ -58,23 +57,6 @@ class AdvancedPickleObfuscationGenerator:
         with open(filepath, "wb") as f:
             pickle.dump(MemoAttack(), f, protocol=pickle.HIGHEST_PROTOCOL)
 
-        # JSON metadata
-        meta_path = self.output_dir / "01_memo_obfuscation.json"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "memo_obfuscation",
-                    "description": "Pickle memo-based reference hiding",
-                    "attack_type": "code_execution",
-                    "trigger": "pickle.load()",
-                    "payload": "subprocess.call(['echo', 'MEMO_ATTACK_EXECUTED'])",
-                    "obfuscation": "memo_caching",
-                    "detection_difficulty": "medium",
-                },
-                f,
-                indent=2,
-            )
-
         return str(filepath), 1
 
     def generate_multiple_stream_attack(self) -> Tuple[str, int]:
@@ -109,25 +91,6 @@ class AdvancedPickleObfuscationGenerator:
         with open(filepath, "wb") as f:
             f.write(buffer.getvalue())
 
-        # JSON metadata
-        meta_path = self.output_dir / "02_multiple_stream_attack.json"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "multiple_stream_attack",
-                    "description": "Multiple pickle streams with hidden payload",
-                    "attack_type": "code_execution",
-                    "streams": 2,
-                    "stream_1": "benign_model_data",
-                    "stream_2": "malicious_eval_payload",
-                    "trigger": "pickle.load()",
-                    "obfuscation": "multi_stream_hiding",
-                    "detection_difficulty": "hard",
-                },
-                f,
-                indent=2,
-            )
-
         return str(filepath), 1
 
     def generate_nt_alias_attack(self) -> Tuple[str, int]:
@@ -156,25 +119,6 @@ class AdvancedPickleObfuscationGenerator:
         finally:
             del sys.modules["nt"]
 
-        # JSON metadata
-        meta_path = self.output_dir / "03_nt_alias_attack.json"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "nt_alias_attack",
-                    "description": "Windows 'nt' module OS alias exploitation",
-                    "attack_type": "code_execution",
-                    "module_alias": "nt",
-                    "actual_module": "os",
-                    "platform": "windows",
-                    "obfuscation": "module_aliasing",
-                    "evasion_target": "os module filters",
-                    "detection_difficulty": "medium",
-                },
-                f,
-                indent=2,
-            )
-
         return str(filepath), 1
 
     def generate_posix_alias_attack(self) -> Tuple[str, int]:
@@ -202,25 +146,6 @@ class AdvancedPickleObfuscationGenerator:
                 pickle.dump(fake_posix.system, f)
         finally:
             del sys.modules["posix"]
-
-        # JSON metadata
-        meta_path = self.output_dir / "04_posix_alias_attack.json"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "posix_alias_attack",
-                    "description": "Unix 'posix' module OS alias exploitation",
-                    "attack_type": "code_execution",
-                    "module_alias": "posix",
-                    "actual_module": "os",
-                    "platform": "unix",
-                    "obfuscation": "module_aliasing",
-                    "evasion_target": "os module filters",
-                    "detection_difficulty": "medium",
-                },
-                f,
-                indent=2,
-            )
 
         return str(filepath), 1
 
@@ -256,23 +181,6 @@ class AdvancedPickleObfuscationGenerator:
 
         with open(filepath, "wb") as f:
             pickle.dump(ManualConstruction(), f, protocol=pickle.HIGHEST_PROTOCOL)
-
-        # JSON metadata
-        meta_path = self.output_dir / "05_manual_pickle_construction.json"
-        with open(meta_path, "w") as f:
-            json.dump(
-                {
-                    "name": "manual_pickle_construction",
-                    "description": "Raw pickle opcode construction",
-                    "attack_type": "code_execution",
-                    "opcodes": ["GLOBAL", "STACK_GLOBAL", "REDUCE"],
-                    "payload": "subprocess.Popen(['echo', 'MANUAL_PICKLE_OPCODE_ATTACK'])",
-                    "obfuscation": "raw_opcode_construction",
-                    "detection_difficulty": "hard",
-                },
-                f,
-                indent=2,
-            )
 
         return str(filepath), 1
 
