@@ -34,17 +34,18 @@ class XGBoostAttackGenerator:
         self.generated_files = []
 
     def generate_custom_objective_rce(self) -> Tuple[str, int]:
-        """Generate a real XGBoost JSON model with malicious metadata.
+        """Generate a real XGBoost binary model with malicious metadata.
 
         Attack Vector:
-            A valid XGBoost model saved as .json with the learner.attributes
-            field containing Python code strings. Downstream code that
-            eval()s attributes or logs them unsanitised is exploited.
+            A valid XGBoost model saved as .ubj (UBJSON binary) with the
+            learner.attributes field containing Python code strings.
+            Downstream code that eval()s attributes or logs them
+            unsanitised is exploited.
 
         Severity: CRITICAL
         Detection: Attribute content scanning
         """
-        filepath = self.output_dir / "01_custom_objective_rce.json"
+        filepath = self.output_dir / "01_custom_objective_rce.ubj"
 
         model = _minimal_model()
         # Inject malicious strings into model attributes
@@ -84,7 +85,7 @@ class XGBoostAttackGenerator:
         return str(filepath), 1
 
     def generate_feature_map_traversal(self) -> Tuple[str, int]:
-        """Generate a real XGBoost JSON model with traversal paths as feature names.
+        """Generate a real XGBoost binary model with traversal paths as feature names.
 
         Attack Vector:
             Feature names set to "../../etc/passwd" etc.
@@ -93,7 +94,7 @@ class XGBoostAttackGenerator:
         Severity: HIGH
         Detection: Path validation in feature name handling
         """
-        filepath = self.output_dir / "03_feature_map_traversal.json"
+        filepath = self.output_dir / "03_feature_map_traversal.ubj"
 
         rng = np.random.default_rng(0)
         X = rng.random((100, 3)).astype(np.float32)

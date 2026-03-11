@@ -5,6 +5,7 @@ Generates attack vectors for OpenVINO models (.xml, .bin)
 """
 
 import json
+import struct
 from pathlib import Path
 from typing import List, Dict, Tuple
 
@@ -55,10 +56,21 @@ class OpenVINOAttackGenerator:
         
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(xml_content)
-        
+
+        # OpenVINO models ship as .xml + .bin pairs; craft the binary weights
+        # file with a malicious native-library path embedded in the blob.
+        bin_path = self.output_dir / "01_custom_layer_exploit.bin"
+        # Simulate an OpenVINO .bin header: 4-byte magic + payload
+        magic = b"OV\x01\x00"
+        payload = b"/path/to/malware.so\x00MaliciousKernel\x00"
+        padding = b"\x00" * (64 - len(payload))
+        with open(bin_path, "wb") as f:
+            f.write(magic + payload + padding)
+
         self.generated_files.append(str(filepath))
+        self.generated_files.append(str(bin_path))
         return str(filepath), 1
-    
+
     def generate_external_data_traversal(self) -> Tuple[str, int]:
         """Generate OpenVINO with path traversal in external data.
         
@@ -93,10 +105,19 @@ class OpenVINOAttackGenerator:
         
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(xml_content)
-        
+
+        # Companion .bin with path-traversal strings embedded in weight data
+        bin_path = self.output_dir / "02_data_traversal.bin"
+        magic = b"OV\x01\x00"
+        traversal_payload = b"../../../../etc/passwd\x00../../../../root/.bashrc\x00"
+        padding = b"\x00" * max(0, 64 - len(traversal_payload))
+        with open(bin_path, "wb") as f:
+            f.write(magic + traversal_payload + padding)
+
         self.generated_files.append(str(filepath))
+        self.generated_files.append(str(bin_path))
         return str(filepath), 1
-    
+
     def generate_all(self) -> Dict[str, Tuple[str, int]]:
         """Generate all OpenVINO attack vectors."""
         results = {
