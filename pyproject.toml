@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modelpoison"
+version = "1.0.0"
+description = "ML model attack vector generator and detection coverage reporter"
+readme = "README.md"
+requires-python = ">=3.10"
+
+[project.scripts]
+modelpoison = "modelpoison.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["modelpoison*", "generators*"]

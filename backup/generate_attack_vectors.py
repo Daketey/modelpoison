@@ -1,13 +1,10 @@
-#!/usr/bin/env python3
-"""
-ML Attack Vector Generator - Standalone Runner
 
-Execute this script to generate all attack vectors:
-    python generate_attack_vectors.py [--output OUTPUT_DIR] [--report] [--markdown]
-
-This runner imports and executes all generators in sequence,
-handling errors gracefully and producing a comprehensive report.
-"""
+# Backward-compatible shim — prefer: modelpoison generate ...
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+from modelpoison.cli import main as _main
+_main(["generate"] + sys.argv[1:])
 
 import sys
 import os

@@ -7,6 +7,55 @@
 ---
 
 ## 📚 Overview
+## 🚀 Usage
+
+### Command-Line Interface (CLI)
+
+Generate all attack vectors (recommended):
+
+```bash
+python generate_attack_vectors.py --output ./attack_vectors_output --report --markdown
+```
+
+**Options:**
+- `--output, -o <dir>`: Output directory (default: ./attack_vectors_output)
+- `--report, -r`: Save a JSON report
+- `--markdown, -m`: Save a Markdown report
+- `--only <generator ...>`: Run only specific generators (e.g., `--only keras pickle`)
+- `--verbose, -v`: Verbose output
+
+**Example:**
+```bash
+python generate_attack_vectors.py --only keras tensorflow --output ./my_vectors
+```
+
+### Python API
+
+You can generate vectors programmatically in your own scripts:
+
+```python
+from generators.keras_vectors import KerasAttackGenerator
+from generators.pickle_vectors import PickleAttackGenerator
+
+keras_gen = KerasAttackGenerator(output_dir="./attack_vectors_output/keras_vectors")
+keras_gen.generate_all()
+
+pickle_gen = PickleAttackGenerator(output_dir="./attack_vectors_output/pickle_vectors")
+pickle_gen.generate_all()
+```
+
+Or use the orchestrator to run all generators at once:
+
+```python
+from generators.orchestrator import AttackVectorOrchestrator
+
+orchestrator = AttackVectorOrchestrator(output_dir="./attack_vectors_output")
+report = orchestrator.generate_all()
+```
+
+---
+
+## 📚 Overview
 
 **modelpoison** contains a complete attack vector database for machine learning model files across all major ML frameworks and formats. Vectors are generated as real files (native SavedModels, pickles, archives, etc.) that trigger actual scanner alerts — not placeholder stubs.
 

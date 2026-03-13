@@ -73,18 +73,18 @@ import pickle
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 
-# Try to import tensorflow for native SavedModel generation
+# TensorFlow is required for generating real SavedModel attack vectors.
 try:
     import tensorflow as tf
-    TF_AVAILABLE = True
-    TF_VERSION = tf.__version__
 except ImportError:
-    TF_AVAILABLE = False
-    TF_VERSION = None
+    raise ImportError(
+        "TensorFlow is required to generate TensorFlow attack vectors. "
+        "Install it with: pip install tensorflow"
+    )
 
 
 class TensorFlowAttackGenerator:
-    """Generate TensorFlow-specific attack vectors with native or fallback modes."""
+    """Generate TensorFlow-specific attack vectors."""
     
     def __init__(self, output_dir: str = "./output"):
         """Initialize the TensorFlow attack generator.
@@ -93,23 +93,12 @@ class TensorFlowAttackGenerator:
             output_dir: Output directory for vectors
             
         Attributes:
-            tf_available: Whether TensorFlow is installed
-            artifact_kind: 'native' if TF available, 'metadata' for JSON fallback
             generated_files: List of all generated file paths
         """
         self.output_dir = Path(output_dir) / "tensorflow_vectors"
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.generated_files = []
-        self.tf_available = TF_AVAILABLE
-        self.artifact_kind = "native" if TF_AVAILABLE else "metadata"
         self.execution_log = []
-        
-        # Log dependency status
-        self._log(f"TensorFlow available: {self.tf_available}")
-        if self.tf_available:
-            self._log(f"TensorFlow version: {TF_VERSION}")
-        else:
-            self._log("FALLBACK: Using JSON metadata generation")
     
     def _log(self, message: str):
         """Log execution message."""

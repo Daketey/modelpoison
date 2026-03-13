@@ -1,0 +1,17 @@
+# Core requirements for modelpoison attack vector generation
+# Install with: pip install -r requirements.txt
+
+tensorflow>=2.11  # For Keras and TensorFlow vectors
+numpy>=1.21
+scipy>=1.7
+h5py>=3.6
+onnx>=1.12
+xgboost>=1.6
+scikit-learn>=1.1
+joblib>=1.1
+flax>=0.6
+jax>=0.4
+safetensors>=0.3
+paddlepaddle>=2.4; platform_system != 'Windows'  # PaddlePaddle not always available on Windows
+openvino-dev>=2023.0
+jinja2>=3.1

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **SARIF file** | `modelaudit.json` |
+| **SARIF file** | `scanner_reports\modelaudit\modelaudit.json` |
 | **Attack vectors** | `attack_vectors_output` |
 | **Date** | 2026-03-13 |
 
