@@ -27,7 +27,6 @@ __all__ = [
     "orchestrator",
     "pickle_vectors",
     "archive_vectors",
-    "config_vectors",
     "keras_vectors",
     "gguf_vectors",
     "onnx_vectors",

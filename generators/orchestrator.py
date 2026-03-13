@@ -34,7 +34,6 @@ class AttackVectorOrchestrator:
         generators_to_load = [
             ('pickle', 'pickle_vectors.PickleAttackGenerator'),
             ('archive', 'archive_vectors.ArchiveAttackGenerator'),
-            ('config', 'config_vectors.ConfigurationAttackGenerator'),
             ('keras', 'keras_vectors.KerasAttackGenerator'),
             ('gguf', 'gguf_vectors.GGUFAttackGenerator'),
             ('pytorch', 'pytorch_vectors.PyTorchAttackGenerator'),

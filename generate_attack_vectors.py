@@ -149,7 +149,6 @@ Examples:
     generators_config = {
         'pickle': ('generators.pickle_vectors', 'PickleAttackGenerator'),
         'archive': ('generators.archive_vectors', 'ArchiveAttackGenerator'),
-        'config': ('generators.config_vectors', 'ConfigurationAttackGenerator'),
         'keras': ('generators.keras_vectors', 'KerasAttackGenerator'),
         'gguf': ('generators.gguf_vectors', 'GGUFAttackGenerator'),
         'pytorch': ('generators.pytorch_vectors', 'PyTorchAttackGenerator'),
