@@ -1,8 +1,5 @@
 # ML File Type Vulnerabilities & CVE Database
 
-**Last Updated:** March 11, 2026  
-**Source:** Promptfoo ModelAudit, NIST CVE Database
-
 ## Critical CVEs for ML Models
 
 ### CVE-2025-54412 - Skops RCE
