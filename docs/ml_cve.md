@@ -1,5 +1,7 @@
 # ML File Type Vulnerabilities & CVE Database
 
+---
+
 ## Critical CVEs for ML Models
 
 ### CVE-2025-54412 - Skops RCE

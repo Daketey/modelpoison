@@ -1,10 +1,5 @@
 # Machine Learning Attack Vectors by File Type
 
-Based on Promptfoo ModelAudit Documentation
-
-**Document Date:** March 11, 2026  
-**Source:** https://www.promptfoo.dev/docs/model-audit/scanners/
-
 ---
 
 ## Table of Contents
