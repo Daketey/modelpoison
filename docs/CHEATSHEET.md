@@ -1,7 +1,5 @@
 # ML Attack Vectors - Quick Reference Cheat Sheet
 
-**Date:** March 11, 2026 | **Source:** Promptfoo ModelAudit | **Version:** 1.0
-
 ---
 
 ## 🚨 CRITICAL THREATS (Act Now)

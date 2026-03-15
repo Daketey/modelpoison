@@ -6,12 +6,43 @@
 
 ---
 
-## 📚 Overview
+## 🛠️ Installation
+
+You can install modelpoison as a package using pip or uv:
+
+### Using pip
+
+```bash
+pip install .
+```
+
+Or from a remote repository (if published):
+
+```bash
+pip install modelpoison
+```
+
+### Using uv (ultra-fast Python package manager)
+
+```bash
+uv pip install .
+```
+
+---
+
 ## 🚀 Usage
+
+After installation, you can use modelpoison as a CLI or as a Python package:
 
 ### Command-Line Interface (CLI)
 
-Generate all attack vectors (recommended):
+Run from anywhere after install:
+
+```bash
+modelpoison generate --output ./attack_vectors_output --report --markdown
+```
+
+Or use the legacy entry point (if running from source):
 
 ```bash
 python generate_attack_vectors.py --output ./attack_vectors_output --report --markdown
@@ -26,7 +57,7 @@ python generate_attack_vectors.py --output ./attack_vectors_output --report --ma
 
 **Example:**
 ```bash
-python generate_attack_vectors.py --only keras tensorflow --output ./my_vectors
+modelpoison generate --only keras tensorflow --output ./my_vectors
 ```
 
 ### Python API
@@ -590,4 +621,4 @@ For **authorized security testing only**:
 
 ---
 
-**End of Index — run `python generate_attack_vectors.py --help` to generate attack vectors**
+**End of Index — run `python generate_attack_vectors.py --help` to generate attack vectors
