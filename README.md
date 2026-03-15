@@ -1,4 +1,4 @@
-# modelpoison
+# ModelPoison
 
 > A corpus of malicious ML model files for security scanner testing and red-team exercises.
 
@@ -13,14 +13,20 @@ You can install modelpoison as a package using pip or uv:
 ### Using pip
 
 ```bash
-pip install .
+pip install git+https://github.com/Daketey/modelpoison.git
 ```
 
-Or from a remote repository (if published):
+### Using uv sync (recommended for reproducible environments)
+
+If you want to install all dependencies from requirements.txt or pyproject.toml, use:
 
 ```bash
-pip install modelpoison
+git clone https://github.com/Daketey/modelpoison.git
+cd modelpoison
+uv sync
 ```
+
+This will create a reproducible environment matching your dependency files.
 
 ### Using uv (ultra-fast Python package manager)
 
@@ -65,8 +71,8 @@ modelpoison generate --only keras tensorflow --output ./my_vectors
 You can generate vectors programmatically in your own scripts:
 
 ```python
-from generators.keras_vectors import KerasAttackGenerator
-from generators.pickle_vectors import PickleAttackGenerator
+from modelpoison.keras_vectors import KerasAttackGenerator
+from modelpoison.pickle_vectors import PickleAttackGenerator
 
 keras_gen = KerasAttackGenerator(output_dir="./attack_vectors_output/keras_vectors")
 keras_gen.generate_all()
@@ -78,7 +84,7 @@ pickle_gen.generate_all()
 Or use the orchestrator to run all generators at once:
 
 ```python
-from generators.orchestrator import AttackVectorOrchestrator
+from modelpoison.orchestrator import AttackVectorOrchestrator
 
 orchestrator = AttackVectorOrchestrator(output_dir="./attack_vectors_output")
 report = orchestrator.generate_all()
